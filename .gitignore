@@ -1,0 +1,128 @@
+# AgentCon Workshop - Multi-language .gitignore
+# Repository contains Python, .NET, and Node.js projects
+
+# ============================================================================
+# ENVIRONMENT & CONFIGURATION
+# ============================================================================
+# Environment files (contains sensitive API keys)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Azure specific
+.azure/
+*.publishsettings
+*.pubxml
+*.azurePubxml
+
+# ============================================================================
+# IDE & EDITOR FILES
+# ============================================================================
+# VS Code
+.vscode/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# JetBrains IDEs
+.idea/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+
+# ============================================================================
+# OS & SYSTEM FILES
+# ============================================================================
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ============================================================================
+# LOGS & TEMPORARY FILES
+# ============================================================================
+*.log
+logs/
+log/
+*.tmp
+*.temp
+*.bak
+.cache/
+
+# ============================================================================
+# TESTING & COVERAGE
+# ============================================================================
+.coverage
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+test-reports/
+TestResults/
+
+# ============================================================================
+# FRONTEND (REACT/NODE.JS) - workspace level only
+# ============================================================================
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+frontend/coverage/
+frontend/build/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# ============================================================================
+# BACKEND BUILD ARTIFACTS - workspace level paths
+# ============================================================================
+# .NET build artifacts (use relative paths from workspace root)
+Backend/dotnet/**/bin/
+Backend/dotnet/**/obj/
+Backend/dotnet/**/[Dd]ebug/
+Backend/dotnet/**/[Rr]elease/
+Backend/dotnet/**/[Bb]uild/
+
+# Python cache and build artifacts  
+Backend/python/**/__pycache__/
+Backend/python/**/*.py[cod]
+Backend/python/**/*.so
+Backend/python/**/build/
+Backend/python/**/dist/
+Backend/python/**/*.egg-info/
+Backend/python/**/wheels/
+
+# ============================================================================
+# SESSION & RUNTIME DATA
+# ============================================================================
+# Agent session data (all backends)
+Backend/python/sk/sessions/
+Backend/python/langchain/sessions/
+Backend/dotnet/sk/sessions/
+
+# ============================================================================
+# LOCAL DEVELOPMENT
+# ============================================================================
+.localdev/
+*.local
+
+# Local backups
+*~
+*.backup
