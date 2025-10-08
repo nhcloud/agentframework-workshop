@@ -99,6 +99,9 @@ public class GroupChatRequest
 
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "sequential";
+
+    [JsonPropertyName("format")]
+    public string? Format { get; set; } = "user_friendly"; // "user_friendly" (default) or "detailed"
 }
 
 public class GroupChatResponse

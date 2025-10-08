@@ -13,17 +13,19 @@ Env.Load();
 // Add YAML configuration support
 builder.Configuration.AddYamlFile("config.yml", optional: true, reloadOnChange: true);
 
-// Configure request timeout - increase from default 20 seconds to 2 minutes
+// Configure request timeout - increase from default 20 seconds to handle AI operations
 builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
 {
-    options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(5);
-    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(2);
+    options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(10);
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(5);
+    // This is the key setting - controls how long the entire request can take
+    options.Limits.MaxRequestBodySize = 52428800; // 50 MB
 });
 
 // Configure HttpClient with longer timeout for external API calls
 builder.Services.AddHttpClient("AzureOpenAI", client =>
 {
-    client.Timeout = TimeSpan.FromMinutes(3); // 3 minutes for AI operations
+    client.Timeout = TimeSpan.FromMinutes(5); // 5 minutes for AI operations
 });
 
 // Add services to the container
@@ -131,6 +133,7 @@ builder.Services.AddScoped<IAgentService, AgentService>();
 builder.Services.AddScoped<IGroupChatService, GroupChatService>();
 builder.Services.AddSingleton<ISessionManager, SessionManager>();
 builder.Services.AddScoped<IGroupChatTemplateService, GroupChatTemplateService>();
+builder.Services.AddScoped<IResponseFormatterService, ResponseFormatterService>();
 
 // Add logging
 builder.Logging.ClearProviders();
@@ -139,39 +142,7 @@ builder.Logging.AddDebug();
 
 var app = builder.Build();
 
-// Add request timeout middleware
-app.Use(async (context, next) =>
-{
-    // Set longer timeout for group chat endpoints
-    if (context.Request.Path.StartsWithSegments("/group-chat"))
-    {
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5)); // 5 minutes for group chat
-        context.RequestAborted = cts.Token;
-    }
-    else if (context.Request.Path.StartsWithSegments("/chat"))
-    {
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)); // 2 minutes for single chat
-        context.RequestAborted = cts.Token;
-    }
-    
-    await next();
-});
-
 // Add request logging middleware for debugging
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.StartsWithSegments("/group-chat") && context.Request.Method == "POST")
-    {
-        context.Request.EnableBuffering();
-        var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
-        context.Request.Body.Position = 0;
-        
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("Group-chat request body: {RequestBody}", body);
-    }
-    
-    await next();
-});
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
@@ -227,9 +198,9 @@ app.MapGet("/health", (Microsoft.Extensions.Options.IOptions<AzureAIConfig> conf
             },
             timeout_settings = new
             {
-                request_timeout = "5 minutes (group chat), 2 minutes (single chat)",
-                http_client_timeout = "3 minutes",
-                keep_alive_timeout = "5 minutes"
+                request_timeout = "5 minutes (all endpoints)",
+                http_client_timeout = "5 minutes",
+                keep_alive_timeout = "10 minutes"
             }
         },
         agents = new { status = "available" },

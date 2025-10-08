@@ -9,17 +9,20 @@ public class GroupChatController(
     IGroupChatService groupChatService,
     ISessionManager sessionManager,
     IAgentService agentService,
+    IResponseFormatterService responseFormatter,
     ILogger<GroupChatController> logger) : ControllerBase
 {
     private readonly IGroupChatService _groupChatService = groupChatService;
     private readonly ISessionManager _sessionManager = sessionManager;
     private readonly IAgentService _agentService = agentService;
+    private readonly IResponseFormatterService _responseFormatter = responseFormatter;
     private readonly ILogger<GroupChatController> _logger = logger;
 
     /// <summary>
     /// Start a group chat with multiple agents using Microsoft Agent Framework
-    /// Frontend payload: { message, session_id?, config?, summarize?, mode?, agents?, max_turns? }
+    /// Frontend payload: { message, session_id?, config?, summarize?, mode?, agents?, max_turns?, format? }
     /// Agents can be null - will auto-select available agents
+    /// format: "detailed" for full conversation, "user_friendly" (default) for synthesized response
     /// </summary>
     [HttpPost("group-chat")]
     public async Task<ActionResult<object>> StartGroupChat([FromBody] GroupChatRequest request)
@@ -41,11 +44,12 @@ public class GroupChatController(
                 request.MaxTurns = 5;
             }
 
-            _logger.LogInformation("Group chat request: Message='{Message}', Agents={Agents}, SessionId='{SessionId}', MaxTurns={MaxTurns}", 
+            _logger.LogInformation("Group chat request: Message='{Message}', Agents={Agents}, SessionId='{SessionId}', MaxTurns={MaxTurns}, Format={Format}", 
                 request.Message, 
                 request.Agents != null ? $"[{string.Join(", ", request.Agents)}]" : "null", 
                 request.SessionId ?? "null",
-                request.MaxTurns);
+                request.MaxTurns,
+                request.Format ?? "user_friendly");
 
             // Auto-select agents if none provided
             if (request.Agents == null || !request.Agents.Any())
@@ -109,52 +113,135 @@ public class GroupChatController(
                 return StatusCode(500, new { detail = $"Group chat service error: {ex.Message}" });
             }
 
-            // Transform response to match frontend expectations
-            var responseMessages = response.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
+            // Check if user wants detailed response or user-friendly format (default)
+            var responseFormat = request.Format?.ToLower() ?? "user_friendly";
             
-            var result = new
+            if (responseFormat == "detailed")
             {
-                conversation_id = response.SessionId,
-                total_turns = response.TotalTurns,
-                active_participants = response.Messages?.Select(m => m.Agent).Distinct().Where(a => a != "user").ToList() ?? new List<string>(),
-                responses = responseMessages.Select(m => new
-                {
-                    agent = m.Agent,
-                    content = m.Content,
-                    message_id = m.MessageId,
-                    is_terminated = m.IsTerminated,
-                    metadata = new { 
-                        turn = m.Turn, 
-                        agent_type = m.AgentType, 
-                        timestamp = m.Timestamp.ToString("O"),
-                        terminated = m.IsTerminated
-                    }
-                }).ToList(),
-                summary = response.Summary,
-                content = response.Summary ?? responseMessages.LastOrDefault()?.Content,
-                metadata = new { 
-                    group_chat_type = response.GroupChatType,
-                    agent_count = response.AgentCount,
-                    agents_used = request.Agents,
-                    max_turns_used = request.MaxTurns,
-                    agent_framework = true,
-                    early_termination = response.TotalTurns < request.MaxTurns * request.Agents.Count,
-                    terminated_agents = response.TerminatedAgents ?? new List<string>(),
-                    timeout_protection = "enabled"
-                }
-            };
-
-            _logger.LogInformation("Agent Framework group chat completed successfully with {ResponseCount} responses, early termination: {EarlyTermination}, terminated agents: {TerminatedAgents}", 
-                responseMessages.Count, 
-                response.TotalTurns < request.MaxTurns * request.Agents.Count,
-                string.Join(", ", response.TerminatedAgents ?? new List<string>()));
-            return Ok(result);
+                // Return detailed response with full conversation history
+                return BuildDetailedResponse(response, request);
+            }
+            else
+            {
+                // Return user-friendly formatted response (default for RAG scenarios)
+                return await BuildUserFriendlyResponseAsync(response, request);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in group chat");
             return StatusCode(500, new { detail = "Internal server error occurred during group chat" });
         }
+    }
+
+    private async Task<ActionResult<object>> BuildUserFriendlyResponseAsync(GroupChatResponse response, GroupChatRequest request)
+    {
+        try
+        {
+            _logger.LogInformation("Building user-friendly response for session {SessionId}", response?.SessionId);
+            
+            if (response == null)
+            {
+                _logger.LogError("GroupChatResponse is null in BuildUserFriendlyResponseAsync");
+                return StatusCode(500, new { detail = "Invalid response from group chat service" });
+            }
+
+            // Format the response for user-friendly output
+            FormattedResponse formattedResponse;
+            try
+            {
+                formattedResponse = await _responseFormatter.FormatGroupChatResponseAsync(response, request.Message);
+                _logger.LogInformation("Response formatted successfully. Content length: {Length}", 
+                    formattedResponse?.Content?.Length ?? 0);
+            }
+            catch (Exception formatEx)
+            {
+                _logger.LogError(formatEx, "Formatter threw exception: {Message}. Falling back to detailed response.", 
+                    formatEx.Message);
+                // Fallback to detailed response if formatting fails
+                return BuildDetailedResponse(response, request);
+            }
+
+            if (formattedResponse == null)
+            {
+                _logger.LogError("FormattedResponse is null, falling back to detailed response");
+                return BuildDetailedResponse(response, request);
+            }
+
+            var result = new
+            {
+                content = formattedResponse.Content,
+                format = formattedResponse.Format,
+                session_id = response.SessionId,
+                metadata = new
+                {
+                    agent_count = formattedResponse.Metadata?.AgentCount ?? 0,
+                    primary_agent = formattedResponse.Metadata?.PrimaryAgent,
+                    contributing_agents = formattedResponse.Metadata?.ContributingAgents ?? new List<string>(),
+                    total_turns = response.TotalTurns,
+                    response_type = "user_friendly"
+                }
+            };
+
+            _logger.LogInformation("Returned user-friendly formatted response with {AgentCount} contributing agents", 
+                formattedResponse.Metadata?.AgentCount ?? 0);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in BuildUserFriendlyResponseAsync: {Message}. Stack: {Stack}", 
+                ex.Message, ex.StackTrace);
+            
+            // Final fallback: return detailed response
+            _logger.LogWarning("Falling back to detailed response due to error");
+            return BuildDetailedResponse(response, request);
+        }
+    }
+
+    private ActionResult<object> BuildDetailedResponse(GroupChatResponse response, GroupChatRequest request)
+    {
+        // Transform response to match frontend expectations (detailed format)
+        var responseMessages = response.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
+        
+        var result = new
+        {
+            conversation_id = response.SessionId,
+            total_turns = response.TotalTurns,
+            active_participants = response.Messages?.Select(m => m.Agent).Distinct().Where(a => a != "user").ToList() ?? new List<string>(),
+            responses = responseMessages.Select(m => new
+            {
+                agent = m.Agent,
+                content = m.Content,
+                message_id = m.MessageId,
+                is_terminated = m.IsTerminated,
+                metadata = new { 
+                    turn = m.Turn, 
+                    agent_type = m.AgentType, 
+                    timestamp = m.Timestamp.ToString("O"),
+                    terminated = m.IsTerminated
+                }
+            }).ToList(),
+            summary = response.Summary,
+            content = response.Summary ?? responseMessages.LastOrDefault()?.Content,
+            metadata = new { 
+                group_chat_type = response.GroupChatType,
+                agent_count = response.AgentCount,
+                agents_used = request.Agents,
+                max_turns_used = request.MaxTurns,
+                agent_framework = true,
+                early_termination = response.TotalTurns < request.MaxTurns * request.Agents.Count,
+                terminated_agents = response.TerminatedAgents ?? new List<string>(),
+                timeout_protection = "enabled",
+                response_type = "detailed"
+            }
+        };
+
+        _logger.LogInformation("Agent Framework group chat completed successfully with {ResponseCount} responses, early termination: {EarlyTermination}, terminated agents: {TerminatedAgents}", 
+            responseMessages.Count, 
+            response.TotalTurns < request.MaxTurns * request.Agents.Count,
+            string.Join(", ", response.TerminatedAgents ?? new List<string>()));
+        return Ok(result);
     }
 
     /// <summary>
