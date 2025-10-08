@@ -15,6 +15,12 @@ public class ChatRequest
 
     [JsonPropertyName("context")]
     public string? Context { get; set; }
+
+    [JsonPropertyName("max_turns")]
+    public int? MaxTurns { get; set; }
+
+    [JsonPropertyName("format")]
+    public string? Format { get; set; }
 }
 
 public class ChatResponse

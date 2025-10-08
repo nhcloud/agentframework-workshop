@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled, { createGlobalStyle, ThemeProvider } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import Select from 'react-select';
+import ReactMarkdown from 'react-markdown';
 import { 
   Send, 
   Mic, 
@@ -12,12 +13,12 @@ import {
   Square,
   RotateCcw,
   Users,
-  MessageSquare,
   Trash2,
   Bot,
   ChevronLeft,
   ChevronRight,
-  Menu
+  Menu,
+  AlertCircle
 } from 'lucide-react';
 
 import ChatService from './services/ChatService';
@@ -173,41 +174,147 @@ const AgentSection = styled.div`
   }
 `;
 
-const ChatModeSection = styled.div`
-  padding: 20px;
-  border-bottom: 1px solid ${props => props.theme.colors.borderLight};
+const MaxTurnsControl = styled.div`
+  margin-top: 12px;
+  padding: 12px;
+  background: ${props => props.theme.colors.backgroundAlt};
+  border-radius: ${props => props.theme.borderRadius.md};
+  border: 1px solid ${props => props.theme.colors.border};
 
-  h3 {
-    font-size: 16px;
-    font-weight: 600;
-    color: ${props => props.theme.colors.text};
-    margin-bottom: 12px;
+  label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    font-size: 14px;
+    font-weight: 500;
+    color: ${props => props.theme.colors.text};
+    margin-bottom: 8px;
+  }
+
+  input[type="number"] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid ${props => props.theme.colors.border};
+    border-radius: ${props => props.theme.borderRadius.sm};
+    font-size: 14px;
+    color: ${props => props.theme.colors.text};
+    background: ${props => props.theme.colors.surface};
+    transition: all 0.2s ease;
+
+    &:focus {
+      outline: none;
+      border-color: ${props => props.theme.colors.primary};
+      box-shadow: 0 0 0 3px ${props => props.theme.colors.primary}20;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: ${props => props.theme.colors.borderLight};
+    }
+  }
+
+  .help-text {
+    font-size: 11px;
+    color: ${props => props.theme.colors.textSecondary};
+    margin-top: 6px;
+    line-height: 1.4;
   }
 `;
 
-const ChatModeButtons = styled.div`
-  display: flex;
-  gap: 8px;
+const FormatSelector = styled.div`
   margin-top: 12px;
+  padding: 12px;
+  background: ${props => props.theme.colors.backgroundAlt};
+  border-radius: ${props => props.theme.borderRadius.md};
+  border: 1px solid ${props => props.theme.colors.border};
+
+  label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: ${props => props.theme.colors.text};
+    margin-bottom: 8px;
+  }
+
+  .format-options {
+    display: flex;
+    gap: 8px;
+  }
+
+  .format-option {
+    flex: 1;
+    padding: 10px 12px;
+    border: 2px solid ${props => props.theme.colors.border};
+    border-radius: ${props => props.theme.borderRadius.sm};
+    background: ${props => props.theme.colors.surface};
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+
+    &:hover {
+      border-color: ${props => props.theme.colors.primary};
+      background: ${props => props.theme.colors.primaryLight}10;
+    }
+
+    &.active {
+      border-color: ${props => props.theme.colors.primary};
+      background: ${props => props.theme.colors.primary}15;
+      color: ${props => props.theme.colors.primary};
+      font-weight: 600;
+    }
+
+    .format-title {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .format-description {
+      font-size: 10px;
+      color: ${props => props.theme.colors.textMuted};
+      line-height: 1.3;
+    }
+  }
+
+  .help-text {
+    font-size: 11px;
+    color: ${props => props.theme.colors.textSecondary};
+    margin-top: 8px;
+    line-height: 1.4;
+  }
 `;
 
-const ChatModeButton = styled(motion.button)`
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid ${props => props.active ? props.theme.colors.primary : props.theme.colors.border};
+const ErrorMessage = styled.div`
+  padding: 12px;
+  background: ${props => props.theme.colors.error}15;
+  border: 1px solid ${props => props.theme.colors.error};
   border-radius: ${props => props.theme.borderRadius.md};
-  background: ${props => props.active ? props.theme.colors.primary : props.theme.colors.surface};
-  color: ${props => props.active ? 'white' : props.theme.colors.text};
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  color: ${props => props.theme.colors.error};
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 
-  &:hover {
-    background: ${props => props.active ? props.theme.colors.primaryDark : props.theme.colors.surfaceHover};
+  svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .error-content {
+    flex: 1;
+  }
+
+  .error-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .error-details {
+    font-size: 12px;
+    opacity: 0.9;
   }
 `;
 
@@ -483,6 +590,56 @@ const MessageContent = styled.div`
   line-height: 1.6;
   font-size: 15px;
 
+  /* Markdown styling */
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.3em; }
+  h3 { font-size: 1.1em; }
+
+  p {
+    margin: 8px 0;
+  }
+
+  ul, ol {
+    margin: 8px 0;
+    padding-left: 24px;
+  }
+
+  li {
+    margin: 4px 0;
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  code {
+    background: ${props => props.isUser ? 'rgba(255,255,255,0.2)' : props.theme.colors.backgroundAlt};
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: 'Courier New', monospace;
+  }
+
+  pre {
+    background: ${props => props.isUser ? 'rgba(255,255,255,0.1)' : props.theme.colors.backgroundAlt};
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 8px 0;
+
+    code {
+      background: none;
+      padding: 0;
+    }
+  }
+
   .message-meta {
     margin-top: 10px;
     font-size: 11px;
@@ -493,6 +650,16 @@ const MessageContent = styled.div`
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+
+    .turn-badge {
+      background: ${props => props.theme.colors.primary}30;
+      color: ${props => props.isUser ? 'white' : props.theme.colors.primary};
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 10px;
+    }
   }
 `;
 
@@ -730,7 +897,10 @@ function App() {
   // Agent and chat mode state
   const [selectedAgents, setSelectedAgents] = useState([]);
   const [availableAgents, setAvailableAgents] = useState([]);
-  const [chatMode, setChatMode] = useState('single'); // 'single' or 'group'
+  const [maxTurns, setMaxTurns] = useState(2);
+  const [responseFormat, setResponseFormat] = useState('user_friendly'); // 'user_friendly' or 'detailed'
+  const [agentLoadError, setAgentLoadError] = useState(null);
+
   
   // Voice state
   const [isVoiceInputEnabled, setIsVoiceInputEnabled] = useState(false);
@@ -764,14 +934,16 @@ function App() {
 
   const loadAvailableAgents = async () => {
     try {
+      setAgentLoadError(null);
       const agents = await chatService.getAvailableAgents();
       setAvailableAgents(agents);
-      // Select first agent by default for single mode
-      if (agents.length > 0) {
-        setSelectedAgents([agents[0]]);
-      }
+      // Don't auto-select any agent - let user choose
+      // This prevents the duplicate selection issue
     } catch (error) {
       console.error('Failed to load agents:', error);
+      const errorMsg = 'Failed to connect to server. Please check that your web server is running and listening on port 8000.';
+      setAgentLoadError(errorMsg);
+      setAvailableAgents([]);
     }
   };
 
@@ -825,32 +997,43 @@ function App() {
     setIsLoading(true);
 
     try {
-      let response;
-      
-      if (chatMode === 'group') {
-        response = await chatService.sendGroupChatMessage(
-          userMessage.content,
-          sessionId
-        );
+      // Always use the unified chat endpoint
+      const agentIds = selectedAgents.map(agent => agent.id || agent.name);
+      const response = await chatService.sendMessage(
+        userMessage.content,
+        sessionId,
+        agentIds.length > 0 ? agentIds : null,
+        selectedAgents.length > 1 ? maxTurns : null, // Only pass maxTurns for multi-agent conversations
+        selectedAgents.length > 1 ? responseFormat : null // Pass format for multi-agent only
+      );
+
+      // Handle different response formats
+      if (responseFormat === 'detailed' && response.responses) {
+        // Detailed format - show all agent responses
+        const detailedMessages = response.responses.map((resp, idx) => ({
+          id: Date.now() + idx + 1,
+          content: resp.content,
+          isUser: false,
+          timestamp: resp.metadata?.timestamp || response.timestamp,
+          agent: resp.agent,
+          metadata: resp.metadata || {},
+          turn: resp.metadata?.turn
+        }));
+        setMessages(prev => [...prev, ...detailedMessages]);
       } else {
-        const agentIds = selectedAgents.map(agent => agent.id || agent.name);
-        response = await chatService.sendMessage(
-          userMessage.content,
-          sessionId,
-          agentIds.length > 0 ? agentIds : null
-        );
+        // User-friendly format - single synthesized response
+        const assistantMessage = {
+          id: Date.now() + 1,
+          content: response.content,
+          isUser: false,
+          timestamp: response.timestamp,
+          agent: response.agent || response.speaker,
+          metadata: response.metadata || {},
+          format: response.format
+        };
+        setMessages(prev => [...prev, assistantMessage]);
       }
-
-      const assistantMessage = {
-        id: Date.now() + 1,
-        content: response.content,
-        isUser: false,
-        timestamp: response.timestamp,
-        agent: response.agent || response.speaker,
-        metadata: response.metadata || {}
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      
       setSessionId(response.sessionId);
 
       // Play voice response if enabled
@@ -956,55 +1139,87 @@ function App() {
               <p>Enterprise Multi-Agent Platform</p>
             </SidebarHeader>
 
-            <ChatModeSection>
-            <h3>
-              <MessageSquare size={16} />
-              Chat Mode
-            </h3>
-            <ChatModeButtons>
-              <ChatModeButton
-                active={chatMode === 'single'}
-                onClick={() => setChatMode('single')}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                Single
-              </ChatModeButton>
-              <ChatModeButton
-                active={chatMode === 'group'}
-                onClick={() => setChatMode('group')}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                Group
-              </ChatModeButton>
-            </ChatModeButtons>
-          </ChatModeSection>
-
           <AgentSection>
             <h3>
               <Bot size={16} />
-              {chatMode === 'single' ? 'Select Agents' : 'Group Chat'}
+              {selectedAgents.length > 1 ? 'Group Chat' : 'Select Agents'}
             </h3>
-            {chatMode === 'single' ? (
-              <Select
-                isMulti
-                value={selectedAgents.map(agent => ({
-                  value: agent.id,
-                  label: agent.name,
-                  ...agent
-                }))}
-                onChange={(selected) => setSelectedAgents(selected || [])}
-                options={formatAgentOptions(availableAgents)}
-                styles={selectStyles}
-                placeholder="Choose agents..."
-                isSearchable
-                closeMenuOnSelect={false}
-              />
+            {agentLoadError ? (
+              <ErrorMessage>
+                <AlertCircle size={18} />
+                <div className="error-content">
+                  <div className="error-title">Connection Error</div>
+                  <div className="error-details">{agentLoadError}</div>
+                </div>
+              </ErrorMessage>
             ) : (
-              <p style={{ fontSize: '14px', color: theme.colors.textSecondary }}>
-                Group chat mode uses predefined agent templates for collaborative conversations.
-              </p>
+              <>
+                <Select
+                  isMulti
+                  value={selectedAgents.map(agent => ({
+                    value: agent.id,
+                    label: agent.name,
+                    ...agent
+                  }))}
+                  onChange={(selected) => setSelectedAgents(selected || [])}
+                  options={formatAgentOptions(availableAgents)}
+                  styles={selectStyles}
+                  placeholder="Choose agents..."
+                  isSearchable
+                  closeMenuOnSelect={false}
+                  isDisabled={availableAgents.length === 0}
+                />
+                {selectedAgents.length > 1 && (
+                  <>
+                    <p style={{ fontSize: '12px', color: theme.colors.textSecondary, marginTop: '8px' }}>
+                      Multiple agents selected - they will collaborate on responses
+                    </p>
+                    <MaxTurnsControl>
+                      <label>
+                        <span>Max Turns</span>
+                        <span style={{ fontSize: '12px', fontWeight: 'normal', color: theme.colors.textMuted }}>
+                          {maxTurns} turn{maxTurns !== 1 ? 's' : ''}
+                        </span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={maxTurns}
+                        onChange={(e) => setMaxTurns(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                      />
+                      <div className="help-text">
+                        Controls how many conversation turns agents can take. Higher values allow more collaboration but may increase response time.
+                      </div>
+                    </MaxTurnsControl>
+
+                    <FormatSelector>
+                      <label>Response Format</label>
+                      <div className="format-options">
+                        <div 
+                          className={`format-option ${responseFormat === 'user_friendly' ? 'active' : ''}`}
+                          onClick={() => setResponseFormat('user_friendly')}
+                        >
+                          <div className="format-title">User Friendly</div>
+                          <div className="format-description">Synthesized, clean response</div>
+                        </div>
+                        <div 
+                          className={`format-option ${responseFormat === 'detailed' ? 'active' : ''}`}
+                          onClick={() => setResponseFormat('detailed')}
+                        >
+                          <div className="format-title">Detailed</div>
+                          <div className="format-description">Full conversation history</div>
+                        </div>
+                      </div>
+                      <div className="help-text">
+                        {responseFormat === 'user_friendly' 
+                          ? '✨ Shows a synthesized response from all agents (recommended)'
+                          : '🔍 Shows all individual agent responses and conversation turns'}
+                      </div>
+                    </FormatSelector>
+                  </>
+                )}
+              </>
             )}
           </AgentSection>
 
@@ -1095,10 +1310,10 @@ function App() {
                   <Menu size={20} />
                 </MenuButton>
               )}
-              {chatMode === 'single' ? <Bot size={20} /> : <Users size={20} />}
-              {chatMode === 'single' 
-                ? `Chat with ${selectedAgents.length > 0 ? selectedAgents.map(a => a.name).join(', ') : 'AI Agent'}`
-                : 'Group Chat Session'
+              {selectedAgents.length > 1 ? <Users size={20} /> : <Bot size={20} />}
+              {selectedAgents.length > 1 
+                ? `Group Chat with ${selectedAgents.map(a => a.name).join(', ')}`
+                : `Chat with ${selectedAgents.length > 0 ? selectedAgents[0].name : 'AI Agent'}`
               }
             </h2>
             <ChatActions>
@@ -1128,8 +1343,13 @@ function App() {
                     {message.isUser ? 'U' : (message.agent ? message.agent.charAt(0).toUpperCase() : 'A')}
                   </MessageAvatar>
                   <MessageContent isUser={message.isUser}>
-                    {message.content}
+                    {message.format === 'markdown' ? (
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    ) : (
+                      message.content
+                    )}
                     <div className="message-meta">
+                      {message.turn !== undefined && <span className="turn-badge">Turn {message.turn}</span>}
                       {message.agent && <span>Agent: {message.agent}</span>}
                       <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
                     </div>

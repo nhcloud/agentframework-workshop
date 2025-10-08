@@ -11,17 +11,20 @@ public class ChatController(
     ISessionManager sessionManager,
     IGroupChatService groupChatService,
     IGroupChatTemplateService templateService,
+    IResponseFormatterService responseFormatter,
     ILogger<ChatController> logger) : ControllerBase
 {
     private readonly IAgentService _agentService = agentService;
     private readonly ISessionManager _sessionManager = sessionManager;
     private readonly IGroupChatService _groupChatService = groupChatService;
     private readonly IGroupChatTemplateService _templateService = templateService;
+    private readonly IResponseFormatterService _responseFormatter = responseFormatter;
     private readonly ILogger<ChatController> _logger = logger;
 
     /// <summary>
-    /// Process a chat message - handles both single and multiple agents using Microsoft Agent Framework
+    /// Process a chat message - automatically handles both single and multiple agents using Microsoft Agent Framework
     /// Frontend payload: { message, session_id?, agents? }
+    /// Automatically uses group chat when multiple agents are selected
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<object>> Chat([FromBody] ChatRequest request)
@@ -52,37 +55,112 @@ public class ChatController(
                 }
             }
 
+            // Auto-select agents if none specified
+            if (request.Agents == null || request.Agents.Count == 0)
+            {
+                _logger.LogInformation("No agents specified, auto-selecting based on message content");
+                
+                var availableAgents = await _agentService.GetAvailableAgentsAsync();
+                var agentsList = availableAgents.ToList();
+                
+                // For now, select the first available agent, but this could be enhanced with intelligent routing
+                if (agentsList.Any())
+                {
+                    request.Agents = new List<string> { agentsList.First().Name };
+                    _logger.LogInformation("Auto-selected agent: {Agent}", request.Agents[0]);
+                }
+                else
+                {
+                    return StatusCode(503, new { detail = "No agents available to process the request" });
+                }
+            }
+
             // Check if multiple agents were specified (frontend sends agents array)
             if (request.Agents != null && request.Agents.Count > 1)
             {
                 // Route to group chat for multiple agents using Agent Framework
+                // Use provided max turns or adjust based on agent count for optimal performance
+                var maxTurns = request.MaxTurns ?? (request.Agents.Count > 3 ? 2 : 3);
+                
                 var groupRequest = new GroupChatRequest
                 {
                     Message = request.Message,
                     Agents = request.Agents,
                     SessionId = sessionId,
-                    MaxTurns = 1
+                    MaxTurns = maxTurns,
+                    Format = request.Format ?? "user_friendly" // Default to synthesized response
                 };
 
                 var groupResponse = await _groupChatService.StartGroupChatAsync(groupRequest);
                 var responseMessages = groupResponse.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
-                var lastMessage = responseMessages.LastOrDefault();
-
-                // Return frontend-compatible group chat response
-                return Ok(new
+                
+                // Check if user wants detailed format
+                var requestedFormat = request.Format?.ToLower() ?? "user_friendly";
+                
+                if (requestedFormat == "detailed")
                 {
-                    content = lastMessage?.Content ?? "No response generated",
-                    agent = lastMessage?.Agent ?? "system",
-                    session_id = sessionId,
-                    timestamp = DateTime.UtcNow.ToString("O"),
-                    metadata = new { 
-                        total_agents = request.Agents.Count,
-                        group_chat = true,
-                        agent_framework = true,
-                        all_responses = responseMessages.Select(m => new { agent = m.Agent, content = m.Content }).ToList(),
-                        conversation_length = conversationHistory.Count
-                    }
-                });
+                    // Return detailed response with full conversation history
+                    _logger.LogInformation("Returning detailed format with {MessageCount} agent messages", responseMessages.Count);
+                    
+                    return Ok(new
+                    {
+                        conversation_id = sessionId,
+                        total_turns = groupResponse.TotalTurns,
+                        active_participants = responseMessages.Select(m => m.Agent).Distinct().ToList(),
+                        responses = responseMessages.Select(m => new
+                        {
+                            agent = m.Agent,
+                            content = m.Content,
+                            message_id = m.MessageId,
+                            is_terminated = m.IsTerminated,
+                            metadata = new { 
+                                turn = m.Turn, 
+                                agent_type = m.AgentType, 
+                                timestamp = m.Timestamp.ToString("O"),
+                                terminated = m.IsTerminated
+                            }
+                        }).ToList(),
+                        summary = groupResponse.Summary,
+                        content = groupResponse.Summary ?? responseMessages.LastOrDefault()?.Content,
+                        metadata = new { 
+                            group_chat_type = groupResponse.GroupChatType,
+                            agent_count = groupResponse.AgentCount,
+                            agents_used = request.Agents,
+                            max_turns_used = maxTurns,
+                            agent_framework = true,
+                            early_termination = groupResponse.TotalTurns < maxTurns * request.Agents.Count,
+                            terminated_agents = groupResponse.TerminatedAgents ?? new List<string>(),
+                            response_type = "detailed",
+                            conversation_length = conversationHistory.Count
+                        }
+                    });
+                }
+                else
+                {
+                    // Return user-friendly formatted response (default)
+                    _logger.LogInformation("Returning user-friendly format using ResponseFormatterService");
+                    
+                    var formattedResponse = await _responseFormatter.FormatGroupChatResponseAsync(groupResponse, request.Message);
+                    
+                    return Ok(new
+                    {
+                        content = formattedResponse.Content,
+                        agent = formattedResponse.Metadata?.PrimaryAgent ?? "system",
+                        session_id = sessionId,
+                        timestamp = DateTime.UtcNow.ToString("O"),
+                        format = formattedResponse.Format,
+                        metadata = new { 
+                            agent_count = formattedResponse.Metadata?.AgentCount ?? request.Agents.Count,
+                            primary_agent = formattedResponse.Metadata?.PrimaryAgent,
+                            contributing_agents = formattedResponse.Metadata?.ContributingAgents ?? responseMessages.Select(m => m.Agent).Distinct().ToList(),
+                            is_group_chat = true,
+                            total_turns = groupResponse.TotalTurns,
+                            response_type = "user_friendly",
+                            conversation_length = conversationHistory.Count,
+                            agent_framework = true
+                        }
+                    });
+                }
             }
 
             // Single agent handling with conversation history
@@ -232,6 +310,49 @@ public class ChatController(
         {
             _logger.LogError(ex, "Error creating group chat from template {TemplateName}", request.TemplateName);
             return StatusCode(500, new { detail = "Internal server error while creating group chat from template" });
+        }
+    }
+
+    /// <summary>
+    /// Get active group chats (sessions)
+    /// Frontend expects: { group_chats: [] }
+    /// </summary>
+    [HttpGet("group-chats")]
+    public async Task<ActionResult<object>> GetActiveGroupChats()
+    {
+        try
+        {
+            var activeSessions = await _sessionManager.GetActiveSessionsAsync();
+            var groupChats = new List<object>();
+            
+            foreach (var sessionId in activeSessions)
+            {
+                try
+                {
+                    var sessionInfo = await _sessionManager.GetSessionInfoAsync(sessionId);
+                    groupChats.Add(new
+                    {
+                        session_id = sessionId,
+                        created_at = sessionInfo.CreatedAt.ToString("O"),
+                        last_activity = sessionInfo.LastActivity.ToString("O"),
+                        message_count = sessionInfo.MessageCount,
+                        agent_types = sessionInfo.AgentTypes
+                    });
+                }
+                catch
+                {
+                    // Skip invalid sessions
+                }
+            }
+            
+            return Ok(new { 
+                group_chats = groupChats
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving active group chats");
+            return StatusCode(500, new { detail = "Internal server error while retrieving group chats" });
         }
     }
 }

@@ -45,16 +45,31 @@ Content-Type: {{contentType}}
   "session_id": "auto-route-test"
 }
 
-### 5. Multi-Agent Group Chat
+### 5. Multi-Agent Group Chat (User-Friendly Format)
 # The /chat endpoint automatically routes to group chat when multiple agents are specified
-POST {{baseUrl}}/group-chat
+# Format: "user_friendly" returns a synthesized, clean response (default)
+POST {{baseUrl}}/chat
 Content-Type: {{contentType}}
 
 {
   "message": "How should we approach building an AI-powered application? Consider both technical and business perspectives.",
   "agents": ["generic_agent", "foundry_people_lookup", "foundry_knowledge_finder"],
   "session_id": "group-chat-test",
-  "max_turns": 2
+  "max_turns": 2,
+  "format": "user_friendly"
+}
+
+### 5b. Multi-Agent Group Chat (Detailed Format)
+# Format: "detailed" returns full conversation with all agent turns and metadata
+POST {{baseUrl}}/chat
+Content-Type: {{contentType}}
+
+{
+  "message": "How should we approach building an AI-powered application? Consider both technical and business perspectives.",
+  "agents": ["generic_agent", "foundry_people_lookup", "foundry_knowledge_finder"],
+  "session_id": "group-chat-detailed-test",
+  "max_turns": 2,
+  "format": "detailed"
 }
 
 ### 6. Get Group Chat Templates
@@ -142,7 +157,7 @@ Accept: {{contentType}}
 
 ### 18. Termination Test - Agent Scope
 # Test that only relevant agents respond based on the question
-POST {{baseUrl}}/group-chat
+POST {{baseUrl}}/chat
 Content-Type: {{contentType}}
 
 {

@@ -40,25 +40,44 @@ class ChatService {
   /**
    * Send message to single agent or multiple agents
    */
-  async sendMessage(message, sessionId = null, agents = null) {
+  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null) {
     try {
       // Handle single agent (backward compatibility)
       if (typeof agents === 'string') {
         agents = [agents];
       }
 
-      const response = await this.api.post('/chat', {
+      const payload = {
         message,
         session_id: sessionId,
         agents: agents // Array of agent names or null for auto-routing
-      });
+      };
 
+      // Add max_turns if provided
+      if (maxTurns !== null && maxTurns !== undefined) {
+        payload.max_turns = maxTurns;
+      }
+
+      // Add format if provided
+      if (format !== null && format !== undefined) {
+        payload.format = format;
+      }
+
+      const response = await this.api.post('/chat', payload);
+
+      // Return full response data, including detailed format fields if present
       return {
         content: response.data.content,
         agent: response.data.agent,
-        sessionId: response.data.session_id,
-        timestamp: new Date().toISOString(),
-        metadata: response.data.metadata || {}
+        sessionId: response.data.session_id || response.data.conversation_id,
+        timestamp: response.data.timestamp || new Date().toISOString(),
+        metadata: response.data.metadata || {},
+        format: response.data.format,
+        // Detailed format fields
+        responses: response.data.responses, // Array of agent responses for detailed format
+        total_turns: response.data.total_turns,
+        conversation_id: response.data.conversation_id,
+        active_participants: response.data.active_participants
       };
     } catch (error) {
       throw new Error(error.response?.data?.detail || 'Failed to send message');
@@ -66,49 +85,22 @@ class ChatService {
   }
 
   /**
-   * Send message to group chat
+   * Send message to group chat (DEPRECATED - use sendMessage with multiple agents instead)
+   * This method is kept for backward compatibility but now redirects to sendMessage
    */
   async sendGroupChatMessage(message, sessionId = null, config = null, summarize = true, mode = 'sequential', agents = null) {
-    try {
-      const response = await this.api.post('/group-chat', {
-        message,
-        session_id: sessionId,
-        config: config,
-        summarize: summarize,
-        mode: mode,
-        agents: agents
-      });
-
-      // Backend now returns a list of agent responses and optional summary
-      // Normalize for UI consumption
-      const agentResponses = response.data.responses || [];
-      return {
-        sessionId: response.data.conversation_id || sessionId,
-        timestamp: new Date().toISOString(),
-        turns: response.data.total_turns,
-        active_participants: response.data.active_participants || [],
-        responses: agentResponses.map(r => ({
-          agent: r.agent,
-            content: r.content,
-            metadata: r.metadata || {},
-            message_id: r.message_id
-        })),
-        summary: response.data.summary || null,
-        // Backward compatible unified content for components expecting a single string
-        content: response.data.content || response.data.summary || (agentResponses.length ? agentResponses[agentResponses.length - 1].content : null),
-        metadata: response.data.metadata || {}
-      };
-    } catch (error) {
-      throw new Error(error.response?.data?.detail || 'Failed to send group chat message');
-    }
+    console.warn('sendGroupChatMessage is deprecated. Use sendMessage with agents array instead.');
+    // Redirect to the unified sendMessage method
+    return this.sendMessage(message, sessionId, agents);
   }
 
   /**
    * Create group chat from template
+   * Now uses the unified /chat endpoint
    */
   async createGroupChatFromTemplate(templateName) {
     try {
-      const response = await this.api.post('/group-chat/from-template', {
+      const response = await this.api.post('/chat/group-chat/from-template', {
         template_name: templateName
       });
 
@@ -134,22 +126,17 @@ class ChatService {
       return response.data.agents || [];
     } catch (error) {
       console.error('Failed to get agents:', error);
-      // Return default agents as fallback
-      return [
-        { id: 'generic', name: 'Generic Assistant', description: 'General purpose AI assistant' },
-        { id: 'people_lookup', name: 'People Lookup', description: 'Find information about people' },
-        { id: 'knowledge_finder', name: 'Knowledge Finder', description: 'Search knowledge base' },
-        { id: 'bedrock_agent', name: 'Bedrock Agent', description: 'AWS Bedrock powered agent' }
-      ];
+      throw new Error(error.response?.data?.detail || 'Failed to connect to server');
     }
   }
 
   /**
    * Get available group chat templates
+   * Now uses the unified /chat endpoint
    */
   async getGroupChatTemplates() {
     try {
-      const response = await this.api.get('/group-chat/templates');
+      const response = await this.api.get('/chat/group-chat/templates');
       return response.data.templates || [];
     } catch (error) {
       console.error('Failed to get group chat templates:', error);
@@ -158,11 +145,12 @@ class ChatService {
   }
 
   /**
-   * Get active group chats
+   * Get active group chats (sessions)
+   * Now uses the unified /chat endpoint
    */
   async getActiveGroupChats() {
     try {
-      const response = await this.api.get('/group-chats');
+      const response = await this.api.get('/chat/group-chats');
       return response.data.group_chats || [];
     } catch (error) {
       console.error('Failed to get active group chats:', error);
@@ -185,27 +173,20 @@ class ChatService {
   }
 
   /**
-   * Reset group chat session
+   * Reset group chat session (DEPRECATED - use resetSession instead)
    */
   async resetGroupChat(sessionId) {
-    try {
-      const response = await this.api.post(`/group-chat/${sessionId}/reset`);
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.detail || 'Failed to reset group chat');
-    }
+    console.warn('resetGroupChat is deprecated. Use resetSession instead.');
+    return this.resetSession(sessionId);
   }
 
   /**
-   * Delete group chat session
+   * Delete group chat session (DEPRECATED - sessions are now managed automatically)
    */
   async deleteGroupChat(sessionId) {
-    try {
-      const response = await this.api.delete(`/group-chat/${sessionId}`);
-      return response.data;
-    } catch (error) {
-      throw new Error(error.response?.data?.detail || 'Failed to delete group chat');
-    }
+    console.warn('deleteGroupChat is deprecated. Sessions are now managed automatically.');
+    // For now, just reset the session
+    return this.resetSession(sessionId);
   }
 
   /**
