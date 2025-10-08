@@ -72,24 +72,29 @@ Content-Type: {{contentType}}
   "format": "detailed"
 }
 
-### 6. Get Group Chat Templates
-GET {{baseUrl}}/chat/group-chat/templates
+### 6. Get Chat Templates (Single & Multi-Agent)
+# Updated route: /chat/templates instead of /chat/group-chat/templates
+GET {{baseUrl}}/chat/templates
 Accept: {{contentType}}
 
 ### 7. Get Specific Template Details
-GET {{baseUrl}}/chat/group-chat/templates/comprehensive_inquiry
+# Updated route: /chat/templates/{name} instead of /chat/group-chat/templates/{name}
+GET {{baseUrl}}/chat/templates/comprehensive_inquiry
 Accept: {{contentType}}
 
-### 8. Create Group Chat from Template
-POST {{baseUrl}}/chat/group-chat/from-template
+### 8. Create Chat from Template
+# Updated route: /chat/from-template instead of /chat/group-chat/from-template
+POST {{baseUrl}}/chat/from-template
 Content-Type: {{contentType}}
 
 {
   "template_name": "comprehensive_inquiry"
 }
 
-### 9. Get Active Group Chats
-GET {{baseUrl}}/group-chats
+### 9. Get Active Chat Sessions
+# Updated route: /chat/sessions instead of /group-chats
+# Now returns both single and multi-agent sessions
+GET {{baseUrl}}/chat/sessions
 Accept: {{contentType}}
 
 ### 10. Test Session History
@@ -152,7 +157,8 @@ Content-Type: {{contentType}}
 }
 
 ### 17. Error Handling - Invalid Template
-GET {{baseUrl}}/chat/group-chat/templates/non_existent_template
+# Updated route: /chat/templates/{name}
+GET {{baseUrl}}/chat/templates/non_existent_template
 Accept: {{contentType}}
 
 ### 18. Termination Test - Agent Scope
@@ -174,7 +180,8 @@ Content-Type: {{contentType}}
 # - Each test covers a unique functionality without redundancy
 # - Use different session_ids to test session isolation
 # - Check response metadata for performance metrics
-# - Template endpoints allow testing of YAML configuration loading
+# - Template endpoints now unified under /chat for consistency
+# - The /chat endpoint automatically handles both single and multi-agent scenarios
 # - Error handling tests ensure robust API behavior
 # - Session management tests verify conversation persistence
 # - Use the Swagger UI at http://localhost:8000 for interactive documentation

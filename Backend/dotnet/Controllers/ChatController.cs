@@ -228,11 +228,11 @@ public class ChatController(
     }
 
     /// <summary>
-    /// Get available group chat templates
+    /// Get available chat templates (supports both single and multi-agent configurations)
     /// Frontend expects: { templates: [] }
     /// </summary>
-    [HttpGet("group-chat/templates")]
-    public async Task<ActionResult<object>> GetGroupChatTemplates()
+    [HttpGet("templates")]
+    public async Task<ActionResult<object>> GetChatTemplates()
     {
         try
         {
@@ -244,7 +244,7 @@ public class ChatController(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving group chat templates");
+            _logger.LogError(ex, "Error retrieving chat templates");
             return StatusCode(500, new { detail = "Internal server error while retrieving templates" });
         }
     }
@@ -252,8 +252,8 @@ public class ChatController(
     /// <summary>
     /// Get detailed information about a specific template
     /// </summary>
-    [HttpGet("group-chat/templates/{templateName}")]
-    public async Task<ActionResult<object>> GetGroupChatTemplate(string templateName)
+    [HttpGet("templates/{templateName}")]
+    public async Task<ActionResult<object>> GetChatTemplate(string templateName)
     {
         try
         {
@@ -274,10 +274,10 @@ public class ChatController(
     }
 
     /// <summary>
-    /// Create group chat from template
+    /// Create chat session from template (supports both single and multi-agent)
     /// </summary>
-    [HttpPost("group-chat/from-template")]
-    public async Task<ActionResult<object>> CreateGroupChatFromTemplate([FromBody] CreateFromTemplateRequest request)
+    [HttpPost("from-template")]
+    public async Task<ActionResult<object>> CreateChatFromTemplate([FromBody] CreateFromTemplateRequest request)
     {
         try
         {
@@ -308,35 +308,36 @@ public class ChatController(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating group chat from template {TemplateName}", request.TemplateName);
-            return StatusCode(500, new { detail = "Internal server error while creating group chat from template" });
+            _logger.LogError(ex, "Error creating chat from template {TemplateName}", request.TemplateName);
+            return StatusCode(500, new { detail = "Internal server error while creating chat from template" });
         }
     }
 
     /// <summary>
-    /// Get active group chats (sessions)
-    /// Frontend expects: { group_chats: [] }
+    /// Get active chat sessions (both single and multi-agent conversations)
+    /// Frontend expects: { sessions: [] }
     /// </summary>
-    [HttpGet("group-chats")]
-    public async Task<ActionResult<object>> GetActiveGroupChats()
+    [HttpGet("sessions")]
+    public async Task<ActionResult<object>> GetActiveChatSessions()
     {
         try
         {
             var activeSessions = await _sessionManager.GetActiveSessionsAsync();
-            var groupChats = new List<object>();
+            var sessions = new List<object>();
             
             foreach (var sessionId in activeSessions)
             {
                 try
                 {
                     var sessionInfo = await _sessionManager.GetSessionInfoAsync(sessionId);
-                    groupChats.Add(new
+                    sessions.Add(new
                     {
                         session_id = sessionId,
                         created_at = sessionInfo.CreatedAt.ToString("O"),
                         last_activity = sessionInfo.LastActivity.ToString("O"),
                         message_count = sessionInfo.MessageCount,
-                        agent_types = sessionInfo.AgentTypes
+                        agent_types = sessionInfo.AgentTypes,
+                        is_group_chat = sessionInfo.AgentTypes?.Count > 1
                     });
                 }
                 catch
@@ -346,13 +347,13 @@ public class ChatController(
             }
             
             return Ok(new { 
-                group_chats = groupChats
+                sessions = sessions
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving active group chats");
-            return StatusCode(500, new { detail = "Internal server error while retrieving group chats" });
+            _logger.LogError(ex, "Error retrieving active chat sessions");
+            return StatusCode(500, new { detail = "Internal server error while retrieving sessions" });
         }
     }
 }
