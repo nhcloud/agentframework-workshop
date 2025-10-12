@@ -1,4 +1,3 @@
-using Azure.AI.OpenAI;
 using OpenAI.Chat;
 using Azure.AI.Agents.Persistent;
 

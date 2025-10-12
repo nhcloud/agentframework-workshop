@@ -1,6 +1,3 @@
-using DotNetAgentFramework.Models;
-using Microsoft.Extensions.Configuration;
-
 namespace DotNetAgentFramework.Services;
 
 /// <summary>

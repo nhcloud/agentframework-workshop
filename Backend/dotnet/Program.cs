@@ -3,7 +3,6 @@ using Swashbuckle.AspNetCore.SwaggerUI;
 using DotNetEnv;
 using DotNetAgentFramework.Configuration;
 using DotNetAgentFramework.Services;
-using NetEscapades.Configuration.Yaml;
 
 var builder = WebApplication.CreateBuilder(args);
 
