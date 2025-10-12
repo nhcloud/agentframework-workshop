@@ -1,7 +1,8 @@
-using DotNetAgentFramework.Services;
 using Azure.AI.Agents.Persistent;
-using Microsoft.Extensions.Options;
 using DotNetAgentFramework.Configuration;
+using DotNetAgentFramework.Services;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 
 namespace DotNetAgentFramework.Agents;
 
@@ -372,7 +373,6 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
 {
     private readonly AgentInstructionsService _instructionsService = instructionsService;
     private readonly AzureAIConfig? _azureConfig = azureConfig?.Value;
-    private PersistentAgentsClient? _azureAgentClient;
     private Microsoft.Agents.AI.ChatClientAgent? _agent;
     private readonly Dictionary<string, Microsoft.Agents.AI.AgentThread> _threadCache = new();
 
@@ -387,14 +387,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
 
         try
         {
-            // Try Azure AI Foundry first if configured
-            if (_azureConfig?.AzureAIFoundry?.IsConfigured() == true)
-            {
-                await InitializeAzureFoundryAgentAsync();
-                return;
-            }
-
-            // Fallback to Azure OpenAI
+            // Use Azure OpenAI only
             await InitializeAzureOpenAIAgentAsync();
         }
         catch (Exception ex)
@@ -402,36 +395,6 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
             _logger.LogError(ex, "Failed to initialize Generic Agent");
             throw;
         }
-    }
-
-    private async Task InitializeAzureFoundryAgentAsync()
-    {
-        var projectEndpoint = _azureConfig?.AzureAIFoundry?.ProjectEndpoint;
-        var managedIdentityClientId = _azureConfig?.AzureAIFoundry?.ManagedIdentityClientId;
-        var deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? _azureConfig?.AzureOpenAI?.DeploymentName ?? "gpt-4o";
-
-        if (string.IsNullOrEmpty(projectEndpoint))
-        {
-            throw new InvalidOperationException("Azure AI Foundry project endpoint is required for Generic Agent");
-        }
-
-        _logger.LogInformation("Initializing Generic Agent with Azure AI Foundry");
-
-        // Create credential - use managed identity if client ID is provided, otherwise use default
-        Azure.Core.TokenCredential credential = !string.IsNullOrEmpty(managedIdentityClientId)
-            ? new ManagedIdentityCredential(managedIdentityClientId)
-            : new DefaultAzureCredential();
-
-        // Create PersistentAgentsClient following the sample pattern
-        _azureAgentClient = new PersistentAgentsClient(projectEndpoint, credential);
-
-        // Create the AI agent using the sample pattern (for generic agent, we create it dynamically)
-        _agent = await _azureAgentClient.CreateAIAgentAsync(
-            deploymentName,
-            name: "GenericAgent",
-            instructions: Instructions);
-
-        _logger.LogInformation("Initialized Generic Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
     }
 
     private Task InitializeAzureOpenAIAgentAsync()
@@ -449,7 +412,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
         // Create Azure OpenAI client and get chat client following the new pattern
         var azureClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential());
         _agent = azureClient.GetChatClient(deploymentName)
-            .CreateAIAgent(name: "GenericAgent", instructions: Instructions);
+            .CreateAIAgent(instructions: Instructions, tools: [AIFunctionFactory.Create(new WeatherTool().GetWeather)]);
         
         _logger.LogInformation("Initialized Generic Agent with Azure OpenAI deployment: {DeploymentName}", deploymentName);
         return Task.CompletedTask;
@@ -523,37 +486,9 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
     // Cleanup method to dispose of threads when agent is disposed
     public async ValueTask DisposeAsync()
     {
-        if (_azureAgentClient != null && _agent != null)
-        {
-            // Clean up threads
-            foreach (var thread in _threadCache.Values)
-            {
-                try
-                {
-                    if (thread is Microsoft.Agents.AI.ChatClientAgentThread chatThread)
-                    {
-                        await _azureAgentClient.Threads.DeleteThreadAsync(chatThread.ConversationId);
-                        _logger.LogDebug("Cleaned up thread: {ConversationId}", chatThread.ConversationId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to cleanup thread for Generic Agent");
-                }
-            }
-            
-            // Clean up agent (for generic agent we created it, so we should clean it up)
-            try
-            {
-                await _azureAgentClient.Administration.DeleteAgentAsync(_agent.Id);
-                _logger.LogDebug("Cleaned up agent: {AgentId}", _agent.Id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to cleanup Generic Agent");
-            }
-        }
-        
+        // Clean up threads - simplified for Azure OpenAI only
         _threadCache.Clear();
+        
+        _logger.LogDebug("Generic Agent cleanup completed");
     }
 }
