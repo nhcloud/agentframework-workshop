@@ -1,0 +1,36 @@
+# Microsoft Agent Framework - Core and integrations
+agent-framework --pre
+
+# Web framework
+fastapi[all]
+uvicorn[standard]
+
+# Configuration and environment
+python-dotenv
+pyyaml
+
+# Azure integrations
+azure-identity
+azure-ai-inference
+openai
+
+# Data handling
+pydantic
+pydantic-settings
+
+# Utility libraries
+aiofiles
+httpx
+
+# Logging and monitoring
+structlog
+
+# Session storage options
+redis
+
+# Development dependencies
+pytest
+pytest-asyncio
+black
+isort
+mypy
