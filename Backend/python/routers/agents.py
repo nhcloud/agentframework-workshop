@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ..models.chat_models import AgentInfo, ErrorResponse
+from models.chat_models import AgentInfo, ErrorResponse
 
 
 logger = logging.getLogger(__name__)

@@ -41,11 +41,7 @@ class BaseAgent:
     def initialize(self):
         """Initialize the agent client following the working pattern."""
         try:
-            # Handle both relative and absolute imports
-            try:
-                from ..core.config import settings
-            except ImportError:
-                from core.config import settings
+            from core.config import settings
             
             project_endpoint = settings.AZURE_AI_PROJECT_ENDPOINT
             if not project_endpoint:

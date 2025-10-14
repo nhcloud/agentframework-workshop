@@ -27,11 +27,7 @@ from agent_framework import (
     use_function_invocation
 )
 
-# Handle both relative and absolute imports
-try:
-    from ..core.config import settings
-except ImportError:
-    from core.config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

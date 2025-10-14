@@ -18,15 +18,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent.parent / ".env"
+env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)
 
-from .routers import chat, agents
-from .core.config import settings
-from .core.logging_config import setup_logging
-from .services.agent_service import AgentService
-from .services.session_manager import SessionManager
-from .services.group_chat_service import GroupChatService
+from routers import chat, agents
+from core.config import settings
+from core.logging_config import setup_logging
+from services.agent_service import AgentService
+from services.session_manager import SessionManager
+from services.group_chat_service import GroupChatService
 
 # Setup logging
 setup_logging()

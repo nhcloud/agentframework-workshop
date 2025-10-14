@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from uuid import uuid4
 
-from ..core.config import settings
-from ..models.chat_models import GroupChatMessage
+from core.config import settings
+from models.chat_models import GroupChatMessage
 
 
 logger = logging.getLogger(__name__)

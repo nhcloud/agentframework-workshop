@@ -15,10 +15,10 @@ from azure.ai.projects.aio import AIProjectClient
 from azure.identity.aio import AzureCliCredential
 
 # Import custom chat clients
-from ..clients.aws_bedrock_client import AWSBedrockChatClient
-from ..clients.aws_bedrock_agent_client import AWSBedrockAgentClient
-from ..clients.google_gemini_client import GoogleGeminiChatClient
-from ..core.config import settings
+from clients.aws_bedrock_client import AWSBedrockChatClient
+from clients.aws_bedrock_agent_client import AWSBedrockAgentClient
+from clients.google_gemini_client import GoogleGeminiChatClient
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

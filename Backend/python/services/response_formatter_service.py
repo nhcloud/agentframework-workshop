@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from .agent_service import AgentService
-from ..models.chat_models import GroupChatResponse, GroupChatMessage
+from models.chat_models import GroupChatResponse, GroupChatMessage
 
 
 logger = logging.getLogger(__name__)

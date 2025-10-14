@@ -15,7 +15,7 @@ from agent_framework import AgentThread, ChatMessage
 
 from .agent_service import AgentService
 from .session_manager import SessionManager
-from ..models.chat_models import GroupChatRequest, GroupChatResponse, GroupChatMessage
+from models.chat_models import GroupChatRequest, GroupChatResponse, GroupChatMessage
 
 
 logger = logging.getLogger(__name__)

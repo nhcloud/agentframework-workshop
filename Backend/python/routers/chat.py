@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from ..models.chat_models import (
+from models.chat_models import (
     ChatRequest, 
     ChatResponse, 
     GroupChatRequest,
@@ -20,7 +20,7 @@ from ..models.chat_models import (
     SessionInfo,
     ErrorResponse
 )
-from ..services.response_formatter_service import ResponseFormatterService
+from services.response_formatter_service import ResponseFormatterService
 
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
                 )
                 
                 # Add user message to session
-                from ..models.chat_models import GroupChatMessage
+                from models.chat_models import GroupChatMessage
                 from datetime import datetime
                 from uuid import uuid4
                 

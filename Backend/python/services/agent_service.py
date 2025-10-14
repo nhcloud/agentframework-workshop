@@ -9,8 +9,8 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from ..agents import create_agent, AVAILABLE_AGENTS
-from ..models.chat_models import AgentInfo
+from agents import create_agent, AVAILABLE_AGENTS
+from models.chat_models import AgentInfo
 
 
 logger = logging.getLogger(__name__)
