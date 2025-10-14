@@ -56,8 +56,10 @@ def _get_agent_type(agent_name: str) -> str:
     """Get agent type based on name."""
     type_map = {
         "generic_agent": "generic",
-        "people_lookup": "people_lookup",
-        "knowledge_finder": "knowledge_finder"
+        "people_lookup": "people_lookup", 
+        "knowledge_finder": "knowledge_finder",
+        "bedrock_agent": "bedrock",
+        "gemini_agent": "gemini"
     }
     return type_map.get(agent_name, agent_name.replace("foundry_", ""))
 
@@ -66,6 +68,12 @@ def _get_provider_type(agent_type: str, agent_name: str) -> str:
     """Get provider type for agent."""
     if agent_name.startswith("foundry_") or agent_type == "Azure AI Foundry":
         return "azure_foundry"
+    elif agent_name == "bedrock_agent" or agent_type == "bedrock":
+        return "aws_bedrock"
+    elif agent_name == "gemini_agent" or agent_type == "gemini":
+        return "google_gemini"
+    elif agent_type in ["people_lookup", "knowledge_finder"]:
+        return "azure_ai_foundry"
     return "azure_openai"
 
 
@@ -89,6 +97,18 @@ def _get_agent_capabilities(agent_name: str) -> List[str]:
             "Knowledge base queries",
             "Policy lookup",
             "Information synthesis"
+        ],
+        "bedrock_agent": [
+            "AWS Bedrock powered responses",
+            "Amazon foundation models",
+            "General question answering",
+            "Advanced AI capabilities"
+        ],
+        "gemini_agent": [
+            "Google Gemini powered responses",
+            "Advanced language understanding",
+            "Creative content generation",
+            "Multi-modal capabilities"
         ]
     }
     return capabilities_map.get(agent_name, ["General assistance"])

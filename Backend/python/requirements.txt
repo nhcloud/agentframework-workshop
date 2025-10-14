@@ -18,6 +18,13 @@ openai
 pydantic
 pydantic-settings
 
+# AWS integration
+boto3
+botocore
+
+# Google AI integration  
+google-generativeai
+
 # Utility libraries
 aiofiles
 httpx

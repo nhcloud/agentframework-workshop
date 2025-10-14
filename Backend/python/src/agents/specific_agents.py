@@ -14,11 +14,11 @@ from agent_framework.azure import AzureOpenAIChatClient, AzureAIAgentClient
 from azure.ai.projects.aio import AIProjectClient
 from azure.identity.aio import AzureCliCredential
 
-# Handle both relative and absolute imports
-try:
-    from ..core.config import settings
-except ImportError:
-    from core.config import settings
+# Import custom chat clients
+from ..clients.aws_bedrock_client import AWSBedrockChatClient
+from ..clients.aws_bedrock_agent_client import AWSBedrockAgentClient
+from ..clients.google_gemini_client import GoogleGeminiChatClient
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +363,241 @@ class KnowledgeFinderAgent:
         }
 
 
+class BedrockAgent:
+    """
+    AWS Bedrock agent using Microsoft Agent Framework.
+    
+    Supports two modes:
+    1. Existing Agent Mode: Uses AWS_BEDROCK_AGENT_ID to connect to pre-configured Bedrock agents
+    2. Direct Model Mode: Uses AWS_BEDROCK_MODEL_ID for direct model invocation
+    
+    This agent provides access to Amazon's foundation models through AWS Bedrock
+    while maintaining compatibility with the Agent Framework.
+    """
+    
+    def __init__(self, name: str = "bedrock_agent"):
+        self.name = name or "BedrockAgent"
+        self.agent = None
+        self._initialized = False
+        self.agent_type = "bedrock"  # Add agent_type for group chat service
+        self.agent_id = settings.AWS_BEDROCK_AGENT_ID
+        
+        mode = "Existing Agent" if self.agent_id else "Direct Model"
+        logger.info(f"Initializing {self.name} using AWS Bedrock with Agent Framework ({mode} mode)")
+    
+    def initialize(self):
+        """Initialize the Agent Framework agent with AWS Bedrock client."""
+        try:
+            # Validate AWS configuration
+            if not settings.AWS_ACCESS_KEY_ID:
+                raise ValueError("AWS_ACCESS_KEY_ID environment variable is required")
+            if not settings.AWS_SECRET_ACCESS_KEY:
+                raise ValueError("AWS_SECRET_ACCESS_KEY environment variable is required")
+            
+            # Choose between existing agent or direct model invocation
+            if self.agent_id:
+                # Existing Agent Mode: Use Bedrock Agent Runtime API (retrieval, not creation)
+                logger.info(f"Using existing AWS Bedrock agent: {self.agent_id}")
+                bedrock_client = AWSBedrockAgentClient(
+                    agent_id=self.agent_id,
+                    region_name=settings.AWS_REGION or "us-east-1",
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
+                )
+                
+                # For existing agents, we use ChatAgent with the client directly
+                # The existing agent already has its instructions configured in AWS Bedrock
+                self.agent = ChatAgent(
+                    name=self.name,
+                    chat_client=bedrock_client,
+                    instructions="Existing AWS Bedrock agent - instructions managed in AWS Console"
+                )
+                
+                logger.info(f"Initialized {self.name} with existing AWS Bedrock agent {self.agent_id}")
+            else:
+                # Direct Model Mode: Use direct model invocation
+                logger.info(f"Using direct AWS Bedrock model: {settings.AWS_BEDROCK_MODEL_ID}")
+                bedrock_client = AWSBedrockChatClient(
+                    model_id=settings.AWS_BEDROCK_MODEL_ID or "amazon.nova-pro-v1:0",
+                    region_name=settings.AWS_REGION or "us-east-1",
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
+                )
+                
+                # Create ChatAgent with the Bedrock client
+                self.agent = ChatAgent(
+                    name=self.name,
+                    chat_client=bedrock_client,
+                    instructions="You are a helpful AI assistant powered by AWS Bedrock. Provide clear, accurate, and helpful responses to user questions."
+                )
+                
+                logger.info(f"Initialized {self.name} with direct AWS Bedrock model")
+            
+            self._initialized = True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize BedrockAgent: {str(e)}")
+            raise
+    
+    async def run(self, message: str, context: Optional[dict] = None) -> str:
+        """
+        Execute the agent with a message using Microsoft Agent Framework.
+        
+        Args:
+            message: The user message to process
+            context: Optional context (not used for bedrock agent)
+            
+        Returns:
+            The agent's response as a string
+        """
+        try:
+            if not self.agent:
+                self.initialize()
+            
+            # Use Agent Framework's run method
+            response = await self.agent.run(message)
+            
+            # Extract text content from the response
+            if hasattr(response, 'content') and response.content:
+                result = response.content
+            elif isinstance(response, str):
+                result = response
+            else:
+                result = str(response)
+                
+            logger.info(f"BedrockAgent completed successfully using Agent Framework")
+            return result or "I apologize, but I couldn't generate a response."
+                
+        except Exception as e:
+            logger.error(f"Error running BedrockAgent with Agent Framework: {str(e)}")
+            return f"I apologize, but I encountered an error: {str(e)}"
+    
+    def cleanup(self):
+        """Clean up resources."""
+        try:
+            self._initialized = False
+            self.agent = None
+        except Exception as e:
+            logger.error(f"Error during BedrockAgent cleanup: {str(e)}")
+    
+    def get_info(self) -> dict:
+        """Get agent information."""
+        info = {
+            "name": self.name,
+            "type": "agent_framework_aws_bedrock",
+            "initialized": self._initialized,
+            "framework": "Microsoft Agent Framework"
+        }
+        
+        if self.agent_id:
+            info.update({
+                "mode": "existing_agent",
+                "agent_id": self.agent_id,
+                "description": f"AWS Bedrock existing agent {self.agent_id}"
+            })
+        else:
+            info.update({
+                "mode": "direct_model",
+                "model": settings.AWS_BEDROCK_MODEL_ID or "amazon.nova-pro-v1:0",
+                "description": f"AWS Bedrock direct model invocation"
+            })
+        
+        return info
+
+
+class GeminiAgent:
+    """
+    Google Gemini agent using Microsoft Agent Framework with custom Gemini chat client.
+    
+    This agent provides access to Google's Gemini models while maintaining 
+    compatibility with the Agent Framework.
+    """
+    
+    def __init__(self, name: str = "gemini_agent"):
+        self.name = name or "GeminiAgent"
+        self.agent = None
+        self._initialized = False
+        self.agent_type = "gemini"  # Add agent_type for group chat service
+        logger.info(f"Initializing {self.name} using Google Gemini with Agent Framework")
+    
+    def initialize(self):
+        """Initialize the Agent Framework agent with Google Gemini client."""
+        try:
+            # Validate Google configuration
+            if not settings.GOOGLE_API_KEY:
+                raise ValueError("GOOGLE_API_KEY environment variable is required")
+            
+            # Create Google Gemini chat client using Agent Framework
+            gemini_client = GoogleGeminiChatClient(
+                model_id=settings.GOOGLE_GEMINI_MODEL_ID or "gemini-2.0-flash",
+                api_key=settings.GOOGLE_API_KEY
+            )
+            
+            # Create agent using the chat client's create_agent method
+            self.agent = gemini_client.create_agent(
+                name=self.name,
+                instructions="You are a helpful AI assistant powered by Google Gemini. Provide clear, accurate, and helpful responses to user questions."
+            )
+            
+            self._initialized = True
+            logger.info(f"Initialized {self.name} with Microsoft Agent Framework and Google Gemini")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize GeminiAgent: {str(e)}")
+            raise
+    
+    async def run(self, message: str, context: Optional[dict] = None) -> str:
+        """
+        Execute the agent with a message using Microsoft Agent Framework.
+        
+        Args:
+            message: The user message to process
+            context: Optional context (not used for gemini agent)
+            
+        Returns:
+            The agent's response as a string
+        """
+        try:
+            if not self.agent:
+                self.initialize()
+            
+            # Use Agent Framework's run method
+            response = await self.agent.run(message)
+            
+            # Extract text content from the response
+            if hasattr(response, 'content') and response.content:
+                result = response.content
+            elif isinstance(response, str):
+                result = response
+            else:
+                result = str(response)
+                
+            logger.info(f"GeminiAgent completed successfully using Agent Framework")
+            return result or "I apologize, but I couldn't generate a response."
+                
+        except Exception as e:
+            logger.error(f"Error running GeminiAgent with Agent Framework: {str(e)}")
+            return f"I apologize, but I encountered an error: {str(e)}"
+    
+    def cleanup(self):
+        """Clean up resources."""
+        try:
+            self._initialized = False
+            self.agent = None
+        except Exception as e:
+            logger.error(f"Error during GeminiAgent cleanup: {str(e)}")
+    
+    def get_info(self) -> dict:
+        """Get agent information."""
+        return {
+            "name": self.name,
+            "type": "agent_framework_google_gemini",
+            "initialized": self._initialized,
+            "model": settings.GOOGLE_GEMINI_MODEL_ID or "gemini-2.0-flash",
+            "framework": "Microsoft Agent Framework"
+        }
+
+
 # Agent factory function
 def create_agent(agent_name: str):
     """
@@ -383,6 +618,10 @@ def create_agent(agent_name: str):
         return PeopleLookupAgent()
     elif agent_name == "knowledge_finder":
         return KnowledgeFinderAgent()
+    elif agent_name == "bedrock_agent":
+        return BedrockAgent()
+    elif agent_name == "gemini_agent":
+        return GeminiAgent()
     else:
         raise ValueError(f"Unknown agent type: {agent_name}")
 
@@ -408,6 +647,20 @@ AVAILABLE_AGENTS = [
         "type": "knowledge_finder", 
         "description": "Specialized Azure AI Foundry agent with organizational knowledge base using Microsoft Agent Framework",
         "class": KnowledgeFinderAgent,
+        "framework": "Microsoft Agent Framework"
+    },
+    {
+        "name": "bedrock_agent",
+        "type": "bedrock",
+        "description": "AWS Bedrock agent with Amazon's foundation models using Microsoft Agent Framework",
+        "class": BedrockAgent,
+        "framework": "Microsoft Agent Framework"
+    },
+    {
+        "name": "gemini_agent", 
+        "type": "gemini",
+        "description": "Google Gemini agent with Google's AI models using Microsoft Agent Framework",
+        "class": GeminiAgent,
         "framework": "Microsoft Agent Framework"
     }
 ]

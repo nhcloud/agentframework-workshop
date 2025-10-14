@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     PEOPLE_AGENT_ID: Optional[str] = Field(default=None, alias="PEOPLE_AGENT_ID")
     KNOWLEDGE_AGENT_ID: Optional[str] = Field(default=None, alias="KNOWLEDGE_AGENT_ID")
     
+    # AWS Bedrock configuration
+    AWS_ACCESS_KEY_ID: Optional[str] = Field(default=None, alias="AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: Optional[str] = Field(default=None, alias="AWS_SECRET_ACCESS_KEY")
+    AWS_REGION: str = Field(default="us-east-1", alias="AWS_REGION")
+    AWS_BEDROCK_MODEL_ID: str = Field(default="amazon.nova-pro-v1:0", alias="AWS_BEDROCK_MODEL_ID")
+    AWS_BEDROCK_AGENT_ID: Optional[str] = Field(default=None, alias="AWS_BEDROCK_AGENT_ID")
+    
+    # Google Gemini configuration
+    GOOGLE_API_KEY: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    GOOGLE_GEMINI_MODEL_ID: str = Field(default="gemini-2.0-flash", alias="GOOGLE_GEMINI_MODEL_ID")
+    
     # Session management
     SESSION_STORAGE_TYPE: str = Field(default="file", alias="SESSION_STORAGE_TYPE")
     SESSION_STORAGE_PATH: str = Field(default="./sessions", alias="SESSION_STORAGE_PATH")
