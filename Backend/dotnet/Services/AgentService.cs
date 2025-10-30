@@ -8,8 +8,8 @@ public interface IAgentService
 {
     Task<IEnumerable<AgentInfo>> GetAvailableAgentsAsync();
     Task<IAgent?> GetAgentAsync(string agentName);
-    Task<ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request);
-    Task<ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request, List<GroupChatMessage>? conversationHistory);
+    Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request);
+    Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request, List<GroupChatMessage>? conversationHistory);
     Task<IAgent?> CreateAzureFoundryAgentAsync(string agentType);
 }
 
@@ -336,12 +336,12 @@ public class AgentService : IAgentService
         return null;
     }
 
-    public async Task<ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request)
+    public async Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request)
     {
         return await ChatWithAgentAsync(agentName, request, null);
     }
 
-    public async Task<ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request, List<GroupChatMessage>? conversationHistory)
+    public async Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request, List<GroupChatMessage>? conversationHistory)
     {
         var agent = await GetAgentAsync(agentName);
         if (agent == null)
