@@ -78,6 +78,11 @@ builder.Services.Configure<AzureAIConfig>(options =>
     var projectEndpoint = Environment.GetEnvironmentVariable("PROJECT_ENDPOINT");
     var peopleAgentId = Environment.GetEnvironmentVariable("PEOPLE_AGENT_ID");
     var knowledgeAgentId = Environment.GetEnvironmentVariable("KNOWLEDGE_AGENT_ID");
+
+    // ContentSafety
+    var csEndpoint = Environment.GetEnvironmentVariable("CONTENT_SAFETY_ENDPOINT");
+    var csApiKey = Environment.GetEnvironmentVariable("CONTENT_SAFETY_API_KEY");
+    var csThreshold = Environment.GetEnvironmentVariable("CONTENT_SAFETY_SEVERITY_THRESHOLD");
     
     if (!string.IsNullOrEmpty(azureOpenAIEndpoint) && !string.IsNullOrEmpty(azureOpenAIApiKey))
     {
@@ -119,6 +124,25 @@ builder.Services.Configure<AzureAIConfig>(options =>
             options.AzureAIFoundry = config.AzureAIFoundry;
         }
     }
+
+    // Azure Content Safety config
+    if (!string.IsNullOrWhiteSpace(csEndpoint) && !string.IsNullOrWhiteSpace(csApiKey))
+    {
+        options.ContentSafety = new ContentSafetyConfig
+        {
+            Endpoint = csEndpoint,
+            ApiKey = csApiKey,
+            SeverityThreshold = int.TryParse(csThreshold, out var t) ? t : 5
+        };
+    }
+    else
+    {
+        var config = builder.Configuration.GetSection("AzureAI").Get<AzureAIConfig>();
+        if (config?.ContentSafety != null)
+        {
+            options.ContentSafety = config.ContentSafety;
+        }
+    }
 });
 
 // Add agent configuration from YAML
@@ -126,6 +150,9 @@ builder.Services.Configure<AppConfig>(builder.Configuration);
 
 // Register agent instructions service
 builder.Services.AddSingleton<AgentInstructionsService>();
+
+// Register Content Safety service
+builder.Services.AddSingleton<IContentSafetyService, ContentSafetyService>();
 
 // Add Agent Framework services - simplified for the new Agent Framework pattern
 builder.Services.AddScoped<IAgentService, AgentService>();
@@ -180,6 +207,7 @@ app.MapGet("/health", (Microsoft.Extensions.Options.IOptions<AzureAIConfig> conf
     var hasAzureOpenAI = !string.IsNullOrEmpty(azureConfig?.AzureOpenAI?.Endpoint) && 
                         !string.IsNullOrEmpty(azureConfig.AzureOpenAI.ApiKey);
     var hasAzureFoundry = !string.IsNullOrEmpty(azureConfig?.AzureAIFoundry?.ProjectEndpoint);
+    var hasContentSafety = !string.IsNullOrWhiteSpace(azureConfig?.ContentSafety?.Endpoint);
     
     return new 
     { 
@@ -190,6 +218,7 @@ app.MapGet("/health", (Microsoft.Extensions.Options.IOptions<AzureAIConfig> conf
         {
             azure_openai = hasAzureOpenAI ? "configured" : "missing",
             azure_ai_foundry = hasAzureFoundry ? "configured" : "missing",
+            content_safety = hasContentSafety ? "configured" : "missing",
             foundry_agents = new
             {
                 people_agent = !string.IsNullOrEmpty(azureConfig?.AzureAIFoundry?.PeopleAgentId) ? "configured" : "missing",

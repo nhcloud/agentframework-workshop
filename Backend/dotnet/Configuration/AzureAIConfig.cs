@@ -4,6 +4,7 @@ public class AzureAIConfig
 {
     public AzureOpenAIConfig? AzureOpenAI { get; set; }
     public AzureAIFoundryConfig? AzureAIFoundry { get; set; }
+    public ContentSafetyConfig? ContentSafety { get; set; }
 }
 
 public class AzureOpenAIConfig
@@ -38,4 +39,14 @@ public class AzureAIFoundryConfig
         return !string.IsNullOrEmpty(PeopleAgentId) || 
                !string.IsNullOrEmpty(KnowledgeAgentId);
     }
+}
+
+public class ContentSafetyConfig
+{
+    public string? Endpoint { get; set; }
+    public string? ApiKey { get; set; }
+    public int SeverityThreshold { get; set; } = 5; // Default threshold aligned with Azure guidance
+
+    public bool IsConfigured()
+        => !string.IsNullOrWhiteSpace(Endpoint) && !string.IsNullOrWhiteSpace(ApiKey);
 }

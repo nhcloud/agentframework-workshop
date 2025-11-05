@@ -12,6 +12,7 @@ public class ChatController(
     IGroupChatService groupChatService,
     IGroupChatTemplateService templateService,
     IResponseFormatterService responseFormatter,
+    IContentSafetyService contentSafety,
     ILogger<ChatController> logger) : ControllerBase
 {
     private readonly IAgentService _agentService = agentService;
@@ -19,6 +20,7 @@ public class ChatController(
     private readonly IGroupChatService _groupChatService = groupChatService;
     private readonly IGroupChatTemplateService _templateService = templateService;
     private readonly IResponseFormatterService _responseFormatter = responseFormatter;
+    private readonly IContentSafetyService _contentSafety = contentSafety;
     private readonly ILogger<ChatController> _logger = logger;
 
     /// <summary>
@@ -34,6 +36,14 @@ public class ChatController(
             if (string.IsNullOrWhiteSpace(request.Message))
             {
                 return BadRequest(new { detail = "Message is required" });
+            }
+
+            // Content Safety - analyze user message
+            var userSafety = await _contentSafety.AnalyzeAsync(request.Message, HttpContext.RequestAborted);
+            if (!_contentSafety.IsSafe(userSafety))
+            {
+                _logger.LogWarning("User message blocked by content safety. Highest severity {Severity} in {Category}", userSafety.HighestSeverity, userSafety.HighestCategory);
+                return BadRequest(new { detail = "Your message appears to contain unsafe content. Please rephrase and try again." });
             }
 
             // Generate session ID if not provided (matching frontend expectation)
@@ -94,6 +104,22 @@ public class ChatController(
                 var groupResponse = await _groupChatService.StartGroupChatAsync(groupRequest);
                 var responseMessages = groupResponse.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
                 
+                // Output Content Safety: scan synthesized or detailed content
+                if (responseMessages.Count > 0)
+                {
+                    // If detailed, check each; otherwise we'll check synthesized below
+                    foreach (var m in responseMessages)
+                    {
+                        var outSafety = await _contentSafety.AnalyzeAsync(m.Content, HttpContext.RequestAborted);
+                        if (!_contentSafety.IsSafe(outSafety))
+                        {
+                            _logger.LogWarning("Blocked unsafe agent output from {Agent} with severity {Severity}", m.Agent, outSafety.HighestSeverity);
+                            m.Content = "[Content removed due to safety policy]";
+                            m.IsTerminated = true;
+                        }
+                    }
+                }
+                
                 // Check if user wants detailed format
                 var requestedFormat = request.Format?.ToLower() ?? "user_friendly";
                 
@@ -141,10 +167,16 @@ public class ChatController(
                     _logger.LogInformation("Returning user-friendly format using ResponseFormatterService");
                     
                     var formattedResponse = await _responseFormatter.FormatGroupChatResponseAsync(groupResponse, request.Message);
+
+                    // Safety scan synthesized content
+                    var synthSafety = await _contentSafety.AnalyzeAsync(formattedResponse.Content, HttpContext.RequestAborted);
+                    var safeContent = _contentSafety.IsSafe(synthSafety)
+                        ? formattedResponse.Content
+                        : "I’m sorry, I can’t share that. The generated content was flagged by safety checks.";
                     
                     return Ok(new
                     {
-                        content = formattedResponse.Content,
+                        content = safeContent,
                         agent = formattedResponse.Metadata?.PrimaryAgent ?? "system",
                         session_id = sessionId,
                         timestamp = DateTime.UtcNow.ToString("O"),
@@ -175,6 +207,14 @@ public class ChatController(
                 .ToList();
 
             var response = await _agentService.ChatWithAgentAsync(agentName, request, relevantHistory);
+
+            // Output safety for single response
+            var outResult = await _contentSafety.AnalyzeAsync(response.Content, HttpContext.RequestAborted);
+            if (!_contentSafety.IsSafe(outResult))
+            {
+                _logger.LogWarning("Blocked unsafe output from {Agent}", response.Agent);
+                response.Content = "I’m sorry, I can’t share that. The generated content was flagged by safety checks.";
+            }
             
             // Store conversation in session
             var userMessage = new GroupChatMessage
