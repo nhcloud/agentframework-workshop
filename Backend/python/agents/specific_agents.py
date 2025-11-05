@@ -6,6 +6,7 @@ and provides specific functionality for different use cases.
 """
 
 import os
+import asyncio
 import logging
 from typing import Optional, List, Any, Dict
 
@@ -141,11 +142,13 @@ class PeopleLookupAgent:
     
     async def initialize(self):
         """Initialize using Agent Framework with Azure AI client."""
+        import asyncio
+        
         try:
             if not settings.AZURE_AI_PROJECT_ENDPOINT:
                 raise ValueError("AZURE_AI_PROJECT_ENDPOINT environment variable is required")
             
-            # Create credential and project client
+            # Create credential and project client with timeout
             self.credential = AzureCliCredential()
             self.project_client = AIProjectClient(
                 endpoint=settings.AZURE_AI_PROJECT_ENDPOINT,
@@ -153,8 +156,16 @@ class PeopleLookupAgent:
             )
             
             # Retrieve the existing agent from Azure AI Foundry with knowledge bases
-            self.azure_ai_agent = await self.project_client.agents.get_agent(self.agent_id)
-            logger.info(f"Retrieved existing agent: {self.azure_ai_agent.id} with knowledge bases")
+            # Add timeout to prevent hanging during initialization
+            try:
+                self.azure_ai_agent = await asyncio.wait_for(
+                    self.project_client.agents.get_agent(self.agent_id),
+                    timeout=15.0
+                )
+                logger.info(f"Retrieved existing agent: {self.azure_ai_agent.id} with knowledge bases")
+            except asyncio.TimeoutError:
+                logger.error("Timeout while retrieving Azure AI agent")
+                raise ValueError("Azure AI agent initialization timed out. Please check your Azure AI Project endpoint and network connectivity.")
             
             # Get vector stores from the existing agent's tool resources
             self.vector_store_ids = []
@@ -171,19 +182,6 @@ class PeopleLookupAgent:
                 agent_id=self.agent_id
             )
             
-            self._initialized = True
-            logger.info(f"Initialized {self.name} with Microsoft Agent Framework and Azure AI Foundry")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize PeopleLookupAgent: {str(e)}")
-            raise
-    
-    async def run(self, message: str, context: Optional[dict] = None) -> str:
-        """Execute the agent using Microsoft Agent Framework."""
-        try:
-            if not self._initialized:
-                await self.initialize()
-            
             # Create file search tool with the agent's vector stores
             file_search_tool = None
             if self.vector_store_ids:
@@ -194,16 +192,41 @@ class PeopleLookupAgent:
                 except Exception as e:
                     logger.error(f"Failed to create file search tool: {str(e)}")
                     file_search_tool = None
-            else:
-                logger.warning("No vector stores found, running without file search")
             
-            # Use ChatAgent as context manager with file search capabilities
-            async with ChatAgent(
+            # Create and store the ChatAgent for workflow compatibility
+            self.agent = ChatAgent(
                 chat_client=self.azure_ai_client,
+                name=self.name,
+                description="Specialized agent for finding people information within the organization",
                 instructions="You are a specialized agent for finding people information within the organization. Use your knowledge base and file search capabilities to provide accurate employee information.",
                 tools=file_search_tool if file_search_tool else None
-            ) as agent:
-                response = await agent.run(message)
+            )
+            
+            self._initialized = True
+            logger.info(f"Initialized {self.name} with Microsoft Agent Framework and Azure AI Foundry")
+            
+        except ConnectionResetError as e:
+            logger.error(f"Connection reset during PeopleLookupAgent initialization: {str(e)}")
+            raise ValueError("Azure AI Project connection was reset. Please verify your network connection and Azure AI Project endpoint.")
+        except Exception as e:
+            logger.error(f"Failed to initialize PeopleLookupAgent: {str(e)}", exc_info=True)
+            raise
+    
+    async def run(self, message: str, context: Optional[dict] = None) -> str:
+        """Execute the agent using Microsoft Agent Framework."""
+        import asyncio
+        
+        try:
+            if not self._initialized:
+                await self.initialize()
+            
+            # Use the stored agent instance
+            if not self.agent:
+                raise ValueError("Agent not initialized properly")
+            
+            # Run with timeout to prevent hanging connections
+            try:
+                response = await asyncio.wait_for(self.agent.run(message), timeout=30.0)
                 
                 if hasattr(response, 'content') and response.content:
                     result = response.content
@@ -214,10 +237,21 @@ class PeopleLookupAgent:
                     
                 logger.info(f"PeopleLookupAgent completed successfully")
                 return result
+                
+            except asyncio.TimeoutError:
+                logger.error("PeopleLookupAgent timed out after 30 seconds")
+                return "I apologize, but the people lookup service timed out. Please try again or contact support if the issue persists."
             
+        except ConnectionResetError as e:
+            logger.error(f"Connection reset error in PeopleLookupAgent: {str(e)}")
+            return "I apologize, but the people lookup service is currently unavailable due to a connection issue. Please try again later."
         except Exception as e:
-            logger.error(f"Error running PeopleLookupAgent: {str(e)}")
-            return f"I apologize, but I encountered an error: {str(e)}"
+            logger.error(f"Error running PeopleLookupAgent: {str(e)}", exc_info=True)
+            # More user-friendly error message
+            error_msg = str(e)
+            if "TransferEncodingError" in error_msg or "ConnectionResetError" in error_msg:
+                return "I apologize, but the people lookup service is experiencing technical difficulties. Please try again in a few moments."
+            return f"I apologize, but I encountered an error while searching for people information. Please try again or contact support."
     
     async def cleanup(self):
         """Clean up resources."""
@@ -243,10 +277,15 @@ class PeopleLookupAgent:
 
 class KnowledgeFinderAgent:
     """
-    Specialized agent for searching and retrieving organizational knowledge.
+    Specialized agent for searching technical documentation and configuration guides.
     
     This agent connects to an existing Azure AI Foundry agent using Microsoft Agent Framework
-    with organizational knowledge bases, documents, and policies.
+    with technical PDF documents in vector stores:
+    - Configuration.pdf
+    - Privileged Identity Management.pdf
+    - Storage Encryption.pdf
+    - TorSetup.pdf
+    - Mobile App Configuration.pdf
     """
     
     def __init__(self):
@@ -293,19 +332,6 @@ class KnowledgeFinderAgent:
                 agent_id=self.agent_id
             )
             
-            self._initialized = True
-            logger.info(f"Initialized {self.name} with Microsoft Agent Framework and Azure AI Foundry")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize KnowledgeFinderAgent: {str(e)}")
-            raise
-    
-    async def run(self, message: str, context: Optional[dict] = None) -> str:
-        """Execute the agent using Microsoft Agent Framework."""
-        try:
-            if not self._initialized:
-                await self.initialize()
-            
             # Create file search tool with the agent's vector stores
             file_search_tool = None
             if self.vector_store_ids:
@@ -319,13 +345,34 @@ class KnowledgeFinderAgent:
             else:
                 logger.warning("No vector stores found, running without file search")
             
-            # Use ChatAgent as context manager with file search capabilities
-            async with ChatAgent(
+            # Create and store ChatAgent with file search capabilities
+            self.agent = ChatAgent(
                 chat_client=self.azure_ai_client,
+                name=self.name,
+                description="Specialized agent for searching organizational knowledge",
                 instructions="You are a specialized agent for searching organizational knowledge. Use your knowledge base and file search capabilities to provide accurate information about policies, documents, and procedures.",
                 tools=file_search_tool if file_search_tool else None
-            ) as agent:
-                response = await agent.run(message)
+            )
+            
+            self._initialized = True
+            logger.info(f"Initialized {self.name} with Microsoft Agent Framework and Azure AI Foundry")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize KnowledgeFinderAgent: {str(e)}")
+            raise
+    
+    async def run(self, message: str, context: Optional[dict] = None) -> str:
+        """Execute the agent using Microsoft Agent Framework."""
+        try:
+            if not self._initialized:
+                await self.initialize()
+            
+            if not self.agent:
+                raise ValueError("Agent not initialized properly")
+            
+            # Run with timeout to prevent hanging connections
+            try:
+                response = await asyncio.wait_for(self.agent.run(message), timeout=30.0)
                 
                 if hasattr(response, 'content') and response.content:
                     result = response.content
@@ -336,6 +383,10 @@ class KnowledgeFinderAgent:
                     
                 logger.info(f"KnowledgeFinderAgent completed successfully")
                 return result
+                
+            except asyncio.TimeoutError:
+                logger.error("KnowledgeFinderAgent timed out after 30 seconds")
+                return "I apologize, but the knowledge search service timed out. Please try again or contact support if the issue persists."
             
         except Exception as e:
             logger.error(f"Error running KnowledgeFinderAgent: {str(e)}")
@@ -365,10 +416,13 @@ class KnowledgeFinderAgent:
 
 class BedrockAgent:
     """
-    AWS Bedrock agent using Microsoft Agent Framework.
+    AWS Bedrock agent specialized in company policies and HR assistance.
+    
+    Purpose: Helps employees with company policies, HR rules, and workplace culture.
+    Provides clear, concise answers and guides to HR when needed.
     
     Supports two modes:
-    1. Existing Agent Mode: Uses AWS_BEDROCK_AGENT_ID to connect to pre-configured Bedrock agents
+    1. Existing Agent Mode: Uses AWS_BEDROCK_AGENT_ID to connect to pre-configured Bedrock agents with HR knowledge base
     2. Direct Model Mode: Uses AWS_BEDROCK_MODEL_ID for direct model invocation
     
     This agent provides access to Amazon's foundation models through AWS Bedrock
@@ -424,11 +478,11 @@ class BedrockAgent:
                     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
                 )
                 
-                # Create ChatAgent with the Bedrock client
+                # Create ChatAgent with the Bedrock client for HR policies
                 self.agent = ChatAgent(
                     name=self.name,
                     chat_client=bedrock_client,
-                    instructions="You are a helpful AI assistant powered by AWS Bedrock. Provide clear, accurate, and helpful responses to user questions."
+                    instructions="You are an HR policies assistant powered by AWS Bedrock. Help employees with company policies, HR rules, workplace culture, vacation policies, benefits, and dress code. Provide clear, concise answers and guide to HR department when needed for sensitive matters."
                 )
                 
                 logger.info(f"Initialized {self.name} with direct AWS Bedrock model")

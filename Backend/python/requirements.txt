@@ -12,6 +12,7 @@ pyyaml
 # Azure integrations
 azure-identity
 azure-ai-inference
+azure-ai-contentsafety
 openai
 
 # Data handling

@@ -43,7 +43,7 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
         # Get services from app state
         agent_service = app_request.app.state.agent_service
         session_manager = app_request.app.state.session_manager
-        group_chat_service = app_request.app.state.group_chat_service
+        workflow_service = app_request.app.state.workflow_service
         
         # Initialize response formatter
         response_formatter = ResponseFormatterService(agent_service)
@@ -73,7 +73,7 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
         
         # Check if multiple agents were specified
         if len(request.agents) > 1:
-            # Route to group chat for multiple agents
+            # Route to workflow-based parallel execution for multiple agents
             max_turns = request.max_turns or (2 if len(request.agents) > 3 else 3)
             
             group_request = GroupChatRequest(
@@ -84,13 +84,14 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
                 format=request.format or "user_friendly"
             )
             
-            group_response = await group_chat_service.start_group_chat(group_request)
+            # Use workflow service for parallel execution
+            group_response = await workflow_service.execute_workflow(group_request)
             
             # Check requested format
             requested_format = (request.format or "user_friendly").lower()
             
             if requested_format == "detailed":
-                # Return detailed format with all turns
+                # Return detailed format with all agent responses
                 formatted_response = await response_formatter.format_group_chat_response(
                     group_response, "detailed"
                 )

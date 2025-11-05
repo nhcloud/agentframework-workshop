@@ -101,8 +101,18 @@ dmypy.json
 
 # Application specific
 sessions/
+sessions/*.json
 *.log
 .DS_Store
+
+# Test files
+test_*.py
+*_test.py
+
+# Migration/temporary documentation
+*MIGRATION*.md
+*QUICK*.md
+*RELEVANCE*.md
 
 # IDE
 .vscode/

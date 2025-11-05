@@ -6,6 +6,8 @@ from .specific_agents import (
     GenericAgent,
     PeopleLookupAgent, 
     KnowledgeFinderAgent,
+    BedrockAgent,
+    GeminiAgent,
     create_agent,
     AVAILABLE_AGENTS
 )
@@ -13,7 +15,9 @@ from .specific_agents import (
 __all__ = [
     "GenericAgent",
     "PeopleLookupAgent",
-    "KnowledgeFinderAgent", 
+    "KnowledgeFinderAgent",
+    "BedrockAgent",
+    "GeminiAgent",
     "create_agent",
     "AVAILABLE_AGENTS"
 ]
