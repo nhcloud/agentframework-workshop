@@ -154,6 +154,9 @@ builder.Services.AddSingleton<AgentInstructionsService>();
 // Register Content Safety service
 builder.Services.AddSingleton<IContentSafetyService, ContentSafetyService>();
 
+// Register Workflow service
+builder.Services.AddScoped<IAgentWorkflowService, AgentWorkflowService>();
+
 // Add Agent Framework services - simplified for the new Agent Framework pattern
 builder.Services.AddScoped<IAgentService, AgentService>();
 builder.Services.AddScoped<IGroupChatService, GroupChatService>();
