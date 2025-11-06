@@ -9,22 +9,22 @@ namespace DotNetAgentFramework.Controllers;
 public class ChatController(
     IAgentService agentService,
     ISessionManager sessionManager,
-    IGroupChatService groupChatService,
+    IAgentWorkflowService workflowService,
     IGroupChatTemplateService templateService,
     IResponseFormatterService responseFormatter,
+    IContentSafetyService contentSafety,
     ILogger<ChatController> logger) : ControllerBase
 {
     private readonly IAgentService _agentService = agentService;
     private readonly ISessionManager _sessionManager = sessionManager;
-    private readonly IGroupChatService _groupChatService = groupChatService;
+    private readonly IAgentWorkflowService _workflowService = workflowService;
     private readonly IGroupChatTemplateService _templateService = templateService;
     private readonly IResponseFormatterService _responseFormatter = responseFormatter;
+    private readonly IContentSafetyService _contentSafety = contentSafety;
     private readonly ILogger<ChatController> _logger = logger;
 
     /// <summary>
-    /// Process a chat message - automatically handles both single and multiple agents using Microsoft Agent Framework
-    /// Frontend payload: { message, session_id?, agents? }
-    /// Automatically uses group chat when multiple agents are selected
+    /// Process a chat message - automatically orchestrates agents using AgentWorkflowService
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<object>> Chat([FromBody] ChatRequest request)
@@ -36,7 +36,15 @@ public class ChatController(
                 return BadRequest(new { detail = "Message is required" });
             }
 
-            // Generate session ID if not provided (matching frontend expectation)
+            // Content Safety - analyze user message
+            var userSafety = await _contentSafety.AnalyzeAsync(request.Message, HttpContext.RequestAborted);
+            if (!_contentSafety.IsSafe(userSafety))
+            {
+                _logger.LogWarning("User message blocked by content safety. Highest severity {Severity} in {Category}", userSafety.HighestSeverity, userSafety.HighestCategory);
+                return BadRequest(new { detail = "Your message appears to contain unsafe content. Please rephrase and try again." });
+            }
+
+            // Generate session ID if not provided
             var sessionId = request.SessionId ?? Guid.NewGuid().ToString();
 
             // Retrieve conversation history for the session
@@ -63,7 +71,6 @@ public class ChatController(
                 var availableAgents = await _agentService.GetAvailableAgentsAsync();
                 var agentsList = availableAgents.ToList();
                 
-                // For now, select the first available agent, but this could be enhanced with intelligent routing
                 if (agentsList.Any())
                 {
                     request.Agents = new List<string> { agentsList.First().Name };
@@ -75,144 +82,101 @@ public class ChatController(
                 }
             }
 
-            // Check if multiple agents were specified (frontend sends agents array)
-            if (request.Agents != null && request.Agents.Count > 1)
+            // Use AgentWorkflowService to orchestrate automatically (replaces manual group chat selection)
+            var workflowRequest = new GroupChatRequest
             {
-                // Route to group chat for multiple agents using Agent Framework
-                // Use provided max turns or adjust based on agent count for optimal performance
-                var maxTurns = request.MaxTurns ?? (request.Agents.Count > 3 ? 2 : 3);
-                
-                var groupRequest = new GroupChatRequest
-                {
-                    Message = request.Message,
-                    Agents = request.Agents,
-                    SessionId = sessionId,
-                    MaxTurns = maxTurns,
-                    Format = request.Format ?? "user_friendly" // Default to synthesized response
-                };
+                Message = request.Message,
+                Agents = request.Agents,
+                SessionId = sessionId,
+                MaxTurns = request.MaxTurns ?? 3,
+                Format = request.Format ?? "user_friendly",
+                Context = request.Context
+            };
 
-                var groupResponse = await _groupChatService.StartGroupChatAsync(groupRequest);
-                var responseMessages = groupResponse.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
-                
-                // Check if user wants detailed format
-                var requestedFormat = request.Format?.ToLower() ?? "user_friendly";
-                
-                if (requestedFormat == "detailed")
+            var workflowResponse = await _workflowService.OrchestrateAsync(workflowRequest, HttpContext.RequestAborted);
+
+            var responseMessages = workflowResponse.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
+
+            // Output Content Safety: scan generated content
+            foreach (var m in responseMessages)
+            {
+                var outSafety = await _contentSafety.AnalyzeAsync(m.Content, HttpContext.RequestAborted);
+                if (!_contentSafety.IsSafe(outSafety))
                 {
-                    // Return detailed response with full conversation history
-                    _logger.LogInformation("Returning detailed format with {MessageCount} agent messages", responseMessages.Count);
-                    
-                    return Ok(new
-                    {
-                        conversation_id = sessionId,
-                        total_turns = groupResponse.TotalTurns,
-                        active_participants = responseMessages.Select(m => m.Agent).Distinct().ToList(),
-                        responses = responseMessages.Select(m => new
-                        {
-                            agent = m.Agent,
-                            content = m.Content,
-                            message_id = m.MessageId,
-                            is_terminated = m.IsTerminated,
-                            metadata = new { 
-                                turn = m.Turn, 
-                                agent_type = m.AgentType, 
-                                timestamp = m.Timestamp.ToString("O"),
-                                terminated = m.IsTerminated
-                            }
-                        }).ToList(),
-                        summary = groupResponse.Summary,
-                        content = groupResponse.Summary ?? responseMessages.LastOrDefault()?.Content,
-                        metadata = new { 
-                            group_chat_type = groupResponse.GroupChatType,
-                            agent_count = groupResponse.AgentCount,
-                            agents_used = request.Agents,
-                            max_turns_used = maxTurns,
-                            agent_framework = true,
-                            early_termination = groupResponse.TotalTurns < maxTurns * request.Agents.Count,
-                            terminated_agents = groupResponse.TerminatedAgents ?? new List<string>(),
-                            response_type = "detailed",
-                            conversation_length = conversationHistory.Count
-                        }
-                    });
-                }
-                else
-                {
-                    // Return user-friendly formatted response (default)
-                    _logger.LogInformation("Returning user-friendly format using ResponseFormatterService");
-                    
-                    var formattedResponse = await _responseFormatter.FormatGroupChatResponseAsync(groupResponse, request.Message);
-                    
-                    return Ok(new
-                    {
-                        content = formattedResponse.Content,
-                        agent = formattedResponse.Metadata?.PrimaryAgent ?? "system",
-                        session_id = sessionId,
-                        timestamp = DateTime.UtcNow.ToString("O"),
-                        format = formattedResponse.Format,
-                        metadata = new { 
-                            agent_count = formattedResponse.Metadata?.AgentCount ?? request.Agents.Count,
-                            primary_agent = formattedResponse.Metadata?.PrimaryAgent,
-                            contributing_agents = formattedResponse.Metadata?.ContributingAgents ?? responseMessages.Select(m => m.Agent).Distinct().ToList(),
-                            is_group_chat = true,
-                            total_turns = groupResponse.TotalTurns,
-                            response_type = "user_friendly",
-                            conversation_length = conversationHistory.Count,
-                            agent_framework = true
-                        }
-                    });
+                    _logger.LogWarning("Blocked unsafe agent output from {Agent} with severity {Severity}", m.Agent, outSafety.HighestSeverity);
+                    m.Content = "[Content removed due to safety policy]";
+                    m.IsTerminated = true;
                 }
             }
 
-            // Single agent handling with conversation history
-            var agentName = request.Agents?.FirstOrDefault() ?? "generic_agent";
-            
-            _logger.LogInformation("Chat request for agent {AgentName} with {HistoryCount} previous messages: {Message}", 
-                agentName, conversationHistory.Count, request.Message);
-
-            // Filter conversation history to only include relevant messages for this agent
-            var relevantHistory = conversationHistory
-                .Where(m => m.Agent == "user" || m.Agent == agentName)
-                .ToList();
-
-            var response = await _agentService.ChatWithAgentAsync(agentName, request, relevantHistory);
-            
-            // Store conversation in session
-            var userMessage = new GroupChatMessage
+            // Format response based on user preference
+            var requestedFormat = request.Format?.ToLower() ?? "user_friendly";
+            if (requestedFormat == "detailed")
             {
-                Content = request.Message,
-                Agent = "user",
-                Timestamp = DateTime.UtcNow,
-                Turn = conversationHistory.Count,
-                MessageId = Guid.NewGuid().ToString()
-            };
-            
-            var agentMessage = new GroupChatMessage
+                return Ok(new
+                {
+                    conversation_id = sessionId,
+                    total_turns = workflowResponse.TotalTurns,
+                    active_participants = responseMessages.Select(m => m.Agent).Distinct().ToList(),
+                    responses = responseMessages.Select(m => new
+                    {
+                        agent = m.Agent,
+                        content = m.Content,
+                        message_id = m.MessageId,
+                        is_terminated = m.IsTerminated,
+                        metadata = new { 
+                            turn = m.Turn, 
+                            agent_type = m.AgentType, 
+                            timestamp = m.Timestamp.ToString("O"),
+                            terminated = m.IsTerminated
+                        }
+                    }).ToList(),
+                    summary = workflowResponse.Summary,
+                    content = workflowResponse.Summary ?? responseMessages.LastOrDefault()?.Content,
+                    metadata = new { 
+                        group_chat_type = workflowResponse.GroupChatType,
+                        agent_count = workflowResponse.AgentCount,
+                        agents_used = request.Agents,
+                        max_turns_used = request.MaxTurns ?? 3,
+                        agent_framework = true,
+                        terminated_agents = workflowResponse.TerminatedAgents ?? new List<string>(),
+                        response_type = "detailed",
+                        conversation_length = conversationHistory.Count
+                    }
+                });
+            }
+            else
             {
-                Content = response.Content,
-                Agent = response.Agent,
-                Timestamp = response.Timestamp,
-                Turn = conversationHistory.Count + 1,
-                MessageId = Guid.NewGuid().ToString()
-            };
+                // Return user-friendly formatted response (default)
+                _logger.LogInformation("Returning user-friendly format using ResponseFormatterService");
 
-            await _sessionManager.AddMessageToSessionAsync(sessionId, userMessage);
-            await _sessionManager.AddMessageToSessionAsync(sessionId, agentMessage);
+                var formattedResponse = await _responseFormatter.FormatGroupChatResponseAsync(workflowResponse, request.Message);
 
-            // Return frontend-compatible single chat response
-            return Ok(new
-            {
-                content = response.Content,
-                agent = response.Agent,
-                session_id = sessionId,
-                timestamp = DateTime.UtcNow.ToString("O"),
-                metadata = new { 
-                    usage = response.Usage,
-                    processing_time_ms = response.ProcessingTimeMs,
-                    conversation_length = conversationHistory.Count + 2, // +2 for new user and agent messages
-                    history_used = relevantHistory.Count,
-                    agent_framework = true
-                }
-            });
+                // Safety check synthesized content
+                var synthSafety = await _contentSafety.AnalyzeAsync(formattedResponse.Content, HttpContext.RequestAborted);
+                var safeContent = _contentSafety.IsSafe(synthSafety)
+                    ? formattedResponse.Content
+                    : "I’m sorry, I can’t share that. The generated content was flagged by safety checks.";
+
+                return Ok(new
+                {
+                    content = safeContent,
+                    agent = formattedResponse.Metadata?.PrimaryAgent ?? "system",
+                    session_id = sessionId,
+                    timestamp = DateTime.UtcNow.ToString("O"),
+                    format = formattedResponse.Format,
+                    metadata = new { 
+                        agent_count = formattedResponse.Metadata?.AgentCount ?? request.Agents.Count,
+                        primary_agent = formattedResponse.Metadata?.PrimaryAgent,
+                        contributing_agents = formattedResponse.Metadata?.ContributingAgents ?? responseMessages.Select(m => m.Agent).Distinct().ToList(),
+                        is_group_chat = true,
+                        total_turns = workflowResponse.TotalTurns,
+                        response_type = "user_friendly",
+                        conversation_length = conversationHistory.Count,
+                        agent_framework = true
+                    }
+                });
+            }
         }
         catch (ArgumentException ex)
         {
@@ -229,7 +193,6 @@ public class ChatController(
 
     /// <summary>
     /// Get available chat templates (supports both single and multi-agent configurations)
-    /// Frontend expects: { templates: [] }
     /// </summary>
     [HttpGet("templates")]
     public async Task<ActionResult<object>> GetChatTemplates()
@@ -315,7 +278,6 @@ public class ChatController(
 
     /// <summary>
     /// Get active chat sessions (both single and multi-agent conversations)
-    /// Frontend expects: { sessions: [] }
     /// </summary>
     [HttpGet("sessions")]
     public async Task<ActionResult<object>> GetActiveChatSessions()
