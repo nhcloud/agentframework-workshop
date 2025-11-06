@@ -26,7 +26,7 @@ from core.config import settings
 from core.logging_config import setup_logging
 from services.agent_service import AgentService
 from services.session_manager import SessionManager
-from services.group_chat_service import GroupChatService
+from services.workflow_orchestration_service import WorkflowOrchestrationService
 
 # Setup logging
 setup_logging()
@@ -41,12 +41,12 @@ async def lifespan(app: FastAPI):
     # Initialize services
     session_manager = SessionManager()
     agent_service = AgentService()
-    group_chat_service = GroupChatService(agent_service, session_manager)
+    workflow_service = WorkflowOrchestrationService(agent_service, session_manager)
     
     # Store services in app state
     app.state.session_manager = session_manager
     app.state.agent_service = agent_service  
-    app.state.group_chat_service = group_chat_service
+    app.state.workflow_service = workflow_service
     
     logger.info("Agent Framework application started successfully")
     yield

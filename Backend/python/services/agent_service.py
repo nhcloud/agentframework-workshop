@@ -46,33 +46,42 @@ class AgentService:
             # Check if agent is already cached and has required attributes
             if agent_name in self._agents:
                 cached_agent = self._agents[agent_name]
-                # Ensure cached agent has agent_type attribute for group chat compatibility
-                if hasattr(cached_agent, 'agent_type'):
+                # Ensure cached agent has both agent_type and agent attributes
+                if hasattr(cached_agent, 'agent_type') and hasattr(cached_agent, 'agent') and cached_agent.agent is not None:
+                    logger.debug(f"Returning cached agent: {agent_name}")
                     return cached_agent
                 else:
-                    # Remove outdated cached agent without agent_type
-                    logger.warning(f"Removing cached agent {agent_name} without agent_type attribute")
+                    # Remove outdated cached agent
+                    logger.warning(f"Removing invalid cached agent {agent_name} (missing agent_type or agent attribute)")
                     del self._agents[agent_name]
             
             # Create new agent instance
             agent = create_agent(agent_name)
             
-            # Initialize the agent (async for Azure AI agents, sync for generic)
+            # Initialize the agent (async for Azure AI agents, sync for others)
             if hasattr(agent, 'initialize') and hasattr(agent.initialize, '__call__'):
                 if agent_name in ['people_lookup', 'knowledge_finder']:
                     await agent.initialize()  # Async initialize for Azure AI agents
                 else:
-                    agent.initialize()  # Sync initialize for generic agent
+                    agent.initialize()  # Sync initialize for generic, bedrock, and gemini agents
             
             # Ensure agent has required attributes for group chat compatibility
             if not hasattr(agent, 'agent_type'):
                 logger.error(f"Agent {agent_name} missing required agent_type attribute")
                 raise AttributeError(f"Agent {agent_name} is missing agent_type attribute")
             
+            if not hasattr(agent, 'agent'):
+                logger.error(f"Agent {agent_name} missing required agent attribute")
+                raise AttributeError(f"Agent {agent_name} is missing agent attribute")
+            
+            if agent.agent is None:
+                logger.error(f"Agent {agent_name} has agent attribute but it is None")
+                raise ValueError(f"Agent {agent_name} agent attribute is None - initialization may have failed")
+            
             # Cache the agent
             self._agents[agent_name] = agent
             
-            logger.info(f"Created and cached agent using Agent Framework: {agent_name} (type: {agent.agent_type})")
+            logger.info(f"✓ Created and cached agent: {agent_name} (type: {agent.agent_type}, agent: {type(agent.agent).__name__})")
             return agent
             
         except Exception as e:

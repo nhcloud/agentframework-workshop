@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     GOOGLE_GEMINI_MODEL_ID: str = Field(default="gemini-2.0-flash", alias="GOOGLE_GEMINI_MODEL_ID")
     
+    # Azure AI Content Safety configuration
+    AZURE_CONTENT_SAFETY_ENDPOINT: Optional[str] = Field(default=None, alias="AZURE_CONTENT_SAFETY_ENDPOINT")
+    AZURE_CONTENT_SAFETY_KEY: Optional[str] = Field(default=None, alias="AZURE_CONTENT_SAFETY_KEY")
+    CONTENT_SAFETY_ENABLED: bool = Field(default=True, alias="CONTENT_SAFETY_ENABLED")
+    CONTENT_SAFETY_THRESHOLD: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD")  # 0-7, higher = stricter
+    BLOCK_UNSAFE_INPUT: bool = Field(default=True, alias="BLOCK_UNSAFE_INPUT")
+    FILTER_UNSAFE_OUTPUT: bool = Field(default=True, alias="FILTER_UNSAFE_OUTPUT")
+    
     # Session management
     SESSION_STORAGE_TYPE: str = Field(default="file", alias="SESSION_STORAGE_TYPE")
     SESSION_STORAGE_PATH: str = Field(default="./sessions", alias="SESSION_STORAGE_PATH")
