@@ -30,7 +30,8 @@ public class SafetyController(IContentSafetyService contentSafety, ILogger<Safet
 
     [HttpPost("scan-image")]
     [RequestSizeLimit(52_428_800)] // 50 MB
-    public async Task<IActionResult> ScanImage([FromForm] IFormFile file, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ScanImage(IFormFile file, CancellationToken ct)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { detail = "Image file is required" });
