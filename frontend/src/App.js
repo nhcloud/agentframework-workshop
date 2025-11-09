@@ -21,11 +21,15 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Plus,
-  X
+  X,
+  Shield,
+  Upload,
+  FileText
 } from 'lucide-react';
 
 import ChatService from './services/ChatService';
 import VoiceService from './services/VoiceService';
+import SafetyTester from './SafetyTester';
 
 // Global styles
 const GlobalStyle = createGlobalStyle`
@@ -781,6 +785,241 @@ const StopButton = styled(motion.button)`
   &:active { transform: translateY(0); }
 `;
 
+const ChatLoadingIndicator = styled(motion.div)`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: white;
+  border-radius: 18px 18px 18px 4px;
+  color: ${props => props.theme.colors.textSecondary};
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid ${props => props.theme.colors.borderLight};
+  max-width: fit-content;
+
+  .dots {
+    display: flex;
+    gap: 3px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: ${props => props.theme.colors.primary};
+    animation: pulse 1.4s ease-in-out infinite both;
+  }
+
+  .dot:nth-child(1) { animation-delay: -0.32s; }
+  .dot:nth-child(2) { animation-delay: -0.16s; }
+  .dot:nth-child(3) { animation-delay: 0s; }
+
+  @keyframes pulse {
+    0%, 80%, 100% {
+      transform: scale(0.6);
+      opacity: 0.5;
+    }
+    40 {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+`;
+
+const MicButton = styled(motion.button)`
+  width: 48px;
+  height: 48px;
+  border: 2px solid ${props => props.active ? props.theme.colors.error : props.theme.colors.border};
+  border-radius: ${props => props.theme.borderRadius.full};
+  background: ${props => props.active ? props.theme.colors.error : props.theme.colors.surface};
+  color: ${props => props.active ? 'white' : props.theme.colors.textSecondary};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: ${props => props.active ? '0 4px 20px rgba(220, 38, 38, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)'};
+
+  &:hover {
+    background: ${props => props.active ? props.theme.colors.error : props.theme.colors.backgroundAlt};
+  }
+
+  &:active { transform: translateY(0); }
+`;
+
+const SendButton = styled(motion.button)`
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: ${props => props.theme.borderRadius.full};
+  background: linear-gradient(135deg, ${props => props.theme.colors.primary} 0%, ${props => props.theme.colors.primaryDark} 100%);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, ${props => props.theme.colors.primaryDark} 0%, ${props => props.theme.colors.professional} 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  & > * { position: relative; z-index: 1; }
+  &:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4); &::before { opacity: 1; } }
+  &:active { transform: translateY(0); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background: ${props => props.theme.colors.textMuted}; }
+`;
+
+const SafetySection = styled.div`
+  padding: 20px;
+  border-bottom: 1px solid ${props => props.theme.colors.borderLight};
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: ${props => props.theme.colors.text};
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+`;
+
+const SafetyTestControls = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const SafetyButton = styled(motion.button)`
+  padding: 10px 16px;
+  border: 1px solid ${props => props.theme.colors.border};
+  border-radius: ${props => props.theme.borderRadius.md};
+  background: ${props => props.theme.colors.surface};
+  color: ${props => props.theme.colors.text};
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme.colors.primary};
+    color: white;
+    border-color: ${props => props.theme.colors.primary};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const SafetyTextArea = styled.textarea`
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 1px solid ${props => props.theme.colors.border};
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-size: 13px;
+  color: ${props => props.theme.colors.text};
+  background: ${props => props.theme.colors.surface};
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme.colors.primary};
+    box-shadow: 0 0 0 3px ${props => props.theme.colors.primary}20;
+  }
+
+  &::placeholder {
+    color: ${props => props.theme.colors.textMuted};
+  }
+`;
+
+const SafetyResultBox = styled.div`
+  padding: 12px;
+  background: ${props => props.isSafe ? props.theme.colors.success + '15' : props.theme.colors.error + '15'};
+  border: 1px solid ${props => props.isSafe ? props.theme.colors.success : props.theme.colors.error};
+  border-radius: ${props => props.theme.borderRadius.md};
+  color: ${props => props.theme.colors.text};
+  font-size: 12px;
+  line-height: 1.5;
+
+  .result-header {
+    font-weight: 600;
+    color: ${props => props.isSafe ? props.theme.colors.success : props.theme.colors.error};
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .result-details {
+    font-size: 11px;
+    opacity: 0.9;
+  }
+
+  .severity-item {
+    display: flex;
+    justify-content: space-between;
+    margin: 4px 0;
+    padding: 2px 4px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 4px;
+  }
+
+  .flagged-categories {
+    margin-top: 8px;
+    font-weight: 600;
+    color: ${props => props.theme.colors.error};
+  }
+`;
+
+const FileUploadButton = styled.label`
+  padding: 10px 16px;
+  border: 2px dashed ${props => props.theme.colors.border};
+  border-radius: ${props => props.theme.borderRadius.md};
+  background: ${props => props.theme.colors.backgroundAlt};
+  color: ${props => props.theme.colors.text};
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  text-align: center;
+  justify-content: center;
+
+  &:hover {
+    background: ${props => props.theme.colors.primary}10;
+    border-color: ${props => props.theme.colors.primary};
+    color: ${props => props.theme.colors.primary};
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+`;
+
 function App() {
   // Core state
   const [messages, setMessages] = useState([]);
@@ -817,6 +1056,14 @@ function App() {
   // Image attachment state (restored)
   const [attachedImage, setAttachedImage] = useState(null);
   
+  // Safety testing state
+  const [safetyTestText, setSafetyTestText] = useState('');
+  const [safetyImageFile, setSafetyImageFile] = useState(null);
+  const [safetyTextResult, setSafetyTextResult] = useState(null);
+  const [safetyImageResult, setSafetyImageResult] = useState(null);
+  const [isSafetyTesting, setIsSafetyTesting] = useState(false);
+  const safetyImageInputRef = useRef(null);
+
   // Local select styles (avoid linter false-positive)
   const customSelectStyles = {
     control: (provided, state) => ({
@@ -1076,6 +1323,57 @@ function App() {
     setAttachedImage(file);
   };
 
+  const testSafetyText = async () => {
+    if (!safetyTestText.trim()) return;
+    
+    setIsSafetyTesting(true);
+    setSafetyTextResult(null);
+    
+    try {
+      const response = await chatService.api.post('/safety/scan-text', {
+        text: safetyTestText
+      });
+      
+      setSafetyTextResult(response.data);
+    } catch (error) {
+      setSafetyTextResult({
+        error: error.response?.data?.detail || error.message || 'Failed to scan text'
+      });
+    } finally {
+      setIsSafetyTesting(false);
+    }
+  };
+
+  const testSafetyImage = async () => {
+    if (!safetyImageFile) return;
+    
+    setIsSafetyTesting(true);
+    setSafetyImageResult(null);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', safetyImageFile);
+      
+      const response = await chatService.uploadApi.post('/safety/scan-image', formData);
+      
+      setSafetyImageResult(response.data);
+    } catch (error) {
+      setSafetyImageResult({
+        error: error.response?.data?.detail || error.message || 'Failed to scan image'
+      });
+    } finally {
+      setIsSafetyTesting(false);
+    }
+  };
+
+  const handleSafetyImageSelect = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      setSafetyImageFile(file);
+      setSafetyImageResult(null);
+    }
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyle />
@@ -1258,6 +1556,144 @@ function App() {
               )}
             </VoiceControls>
           </VoiceSection>
+
+          <SafetySection>
+            <h3>
+              <Shield size={16} />
+              Content Safety Testing
+            </h3>
+            <SafetyTestControls>
+              <div>
+                <SafetyTextArea
+                  placeholder="Enter text to scan for safety..."
+                  value={safetyTestText}
+                  onChange={(e) => setSafetyTestText(e.target.value)}
+                />
+                <SafetyButton
+                  onClick={testSafetyText}
+                  disabled={!safetyTestText.trim() || isSafetyTesting}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  style={{ marginTop: '8px' }}
+                >
+                  <FileText size={16} />
+                  Scan Text
+                </SafetyButton>
+              </div>
+
+              {safetyTextResult && (
+                <SafetyResultBox isSafe={safetyTextResult.isSafe && !safetyTextResult.error}>
+                  {safetyTextResult.error ? (
+                    <>
+                      <div className="result-header">
+                        <AlertCircle size={16} />
+                        Error
+                      </div>
+                      <div className="result-details">{safetyTextResult.error}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="result-header">
+                        <Shield size={16} />
+                        {safetyTextResult.isSafe ? 'Safe Content' : 'Unsafe Content Detected'}
+                      </div>
+                      <div className="result-details">
+                        <div><strong>Highest Severity:</strong> {safetyTextResult.highestSeverity}</div>
+                        <div><strong>Highest Category:</strong> {safetyTextResult.highestCategory || 'None'}</div>
+                        {safetyTextResult.categorySeverities && Object.keys(safetyTextResult.categorySeverities).length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <strong>Category Severities:</strong>
+                            {Object.entries(safetyTextResult.categorySeverities).map(([category, severity]) => (
+                              <div key={category} className="severity-item">
+                                <span>{category}</span>
+                                <span>{severity}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {safetyTextResult.flaggedCategories && safetyTextResult.flaggedCategories.length > 0 && (
+                          <div className="flagged-categories">
+                            Flagged: {safetyTextResult.flaggedCategories.join(', ')}
+                          </div>
+                        )}
+                        {safetyTextResult.blocklistMatches && safetyTextResult.blocklistMatches.length > 0 && (
+                          <div className="flagged-categories">
+                            Blocklist Matches: {safetyTextResult.blocklistMatches.length}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </SafetyResultBox>
+              )}
+
+              <div style={{ marginTop: '12px' }}>
+                <FileUploadButton>
+                  <Upload size={16} />
+                  {safetyImageFile ? `Selected: ${safetyImageFile.name}` : 'Select Image to Scan'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={safetyImageInputRef}
+                    onChange={handleSafetyImageSelect}
+                  />
+                </FileUploadButton>
+                {safetyImageFile && (
+                  <SafetyButton
+                    onClick={testSafetyImage}
+                    disabled={isSafetyTesting}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    style={{ marginTop: '8px' }}
+                  >
+                    <ImageIcon size={16} />
+                    Scan Image
+                  </SafetyButton>
+                )}
+              </div>
+
+              {safetyImageResult && (
+                <SafetyResultBox isSafe={safetyImageResult.isSafe && !safetyImageResult.error}>
+                  {safetyImageResult.error ? (
+                    <>
+                      <div className="result-header">
+                        <AlertCircle size={16} />
+                        Error
+                      </div>
+                      <div className="result-details">{safetyImageResult.error}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="result-header">
+                        <Shield size={16} />
+                        {safetyImageResult.isSafe ? 'Safe Image' : 'Unsafe Image Detected'}
+                      </div>
+                      <div className="result-details">
+                        <div><strong>Highest Severity:</strong> {safetyImageResult.highestSeverity}</div>
+                        <div><strong>Highest Category:</strong> {safetyImageResult.highestCategory || 'None'}</div>
+                        {safetyImageResult.categorySeverities && Object.keys(safetyImageResult.categorySeverities).length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <strong>Category Severities:</strong>
+                            {Object.entries(safetyImageResult.categorySeverities).map(([category, severity]) => (
+                              <div key={category} className="severity-item">
+                                <span>{category}</span>
+                                <span>{severity}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {safetyImageResult.flaggedCategories && safetyImageResult.flaggedCategories.length > 0 && (
+                          <div className="flagged-categories">
+                            Flagged: {safetyImageResult.flaggedCategories.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </SafetyResultBox>
+              )}
+            </SafetyTestControls>
+          </SafetySection>
           </SidebarContent>
         </Sidebar>
 
@@ -1415,101 +1851,3 @@ function App() {
 }
 
 export default App;
-
-const ChatLoadingIndicator = styled(motion.div)`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 20px;
-  background: white;
-  border-radius: 18px 18px 18px 4px;
-  color: ${props => props.theme.colors.textSecondary};
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid ${props => props.theme.colors.borderLight};
-  max-width: fit-content;
-
-  .dots {
-    display: flex;
-    gap: 3px;
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: ${props => props.theme.colors.primary};
-    animation: pulse 1.4s ease-in-out infinite both;
-  }
-
-  .dot:nth-child(1) { animation-delay: -0.32s; }
-  .dot:nth-child(2) { animation-delay: -0.16s; }
-  .dot:nth-child(3) { animation-delay: 0s; }
-
-  @keyframes pulse {
-    0%, 80%, 100% {
-      transform: scale(0.6);
-      opacity: 0.5;
-    }
-    40 {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-`;
-
-const MicButton = styled(motion.button)`
-  width: 48px;
-  height: 48px;
-  border: 2px solid ${props => props.active ? props.theme.colors.error : props.theme.colors.border};
-  border-radius: ${props => props.theme.borderRadius.full};
-  background: ${props => props.active ? props.theme.colors.error : props.theme.colors.surface};
-  color: ${props => props.active ? 'white' : props.theme.colors.textSecondary};
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  box-shadow: ${props => props.active ? '0 4px 20px rgba(220, 38, 38, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)'};
-
-  &:hover {
-    background: ${props => props.active ? props.theme.colors.error : props.theme.colors.backgroundAlt};
-  }
-
-  &:active { transform: translateY(0); }
-`;
-
-const SendButton = styled(motion.button)`
-  width: 48px;
-  height: 48px;
-  border: none;
-  border-radius: ${props => props.theme.borderRadius.full};
-  background: linear-gradient(135deg, ${props => props.theme.colors.primary} 0%, ${props => props.theme.colors.primaryDark} 100%);
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, ${props => props.theme.colors.primaryDark} 0%, ${props => props.theme.colors.professional} 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  & > * { position: relative; z-index: 1; }
-  &:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4); &::before { opacity: 1; } }
-  &:active { transform: translateY(0); }
-  &:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background: ${props => props.theme.colors.textMuted}; }
-`;

@@ -187,6 +187,154 @@ MANAGED_IDENTITY_CLIENT_ID=your-user-managed-identity-client-id-that-has-access-
 FRONTEND_URL=http://localhost:3001
 ```
 
+## Step 9: Create Azure AI Content Safety (Recommended)
+
+Azure AI Content Safety provides enterprise-grade content moderation for text and images across 4 categories: Hate, SelfHarm, Sexual, and Violence.
+
+### Create Content Safety Resource
+
+1. **Via Azure Portal:**
+   - Go to Azure Portal
+   - Click "Create a resource"
+   - Search for "Azure AI Content Safety"
+   - Select the resource and click "Create"
+   - Choose your resource group and region (same as AI Foundry)
+   - Select pricing tier (S0 recommended)
+   - Click "Review + Create"
+
+2. **Via Azure CLI:**
+   ```bash
+   az cognitiveservices account create \
+     --name your-content-safety-name \
+     --resource-group your-resource-group \
+     --kind ContentSafety \
+     --sku S0 \
+     --location eastus
+   ```
+
+### Get Content Safety Credentials
+
+1. Navigate to your Content Safety resource
+2. Go to "Keys and Endpoint" section
+3. Copy **Endpoint** URL
+4. Copy **Key 1** or **Key 2**
+
+![Content Safety Keys Screenshot](img/content-safety-keys.png)
+
+### Add to Environment Variables
+
+Update your `.env` file:
+
+```bash
+# ── Azure Content Safety (RECOMMENDED) ─────────────────
+CONTENT_SAFETY_ENDPOINT=https://your-content-safety.cognitiveservices.azure.com/
+CONTENT_SAFETY_API_KEY=your-content-safety-api-key-here
+CONTENT_SAFETY_ENABLED=true
+CONTENT_SAFETY_SEVERITY_THRESHOLD=4
+
+# Per-category thresholds (0-7, or -1 to disable)
+CONTENT_SAFETY_THRESHOLD_HATE=4
+CONTENT_SAFETY_THRESHOLD_SELFHARM=4
+CONTENT_SAFETY_THRESHOLD_SEXUAL=4
+CONTENT_SAFETY_THRESHOLD_VIOLENCE=4
+
+# Behavior configuration
+CONTENT_SAFETY_BLOCK_UNSAFE_INPUT=true
+CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT=true
+
+# Optional: Custom blocklists (comma-separated names)
+CONTENT_SAFETY_BLOCKLISTS=
+
+# Output filtering action (redact | placeholder | empty)
+CONTENT_SAFETY_OUTPUT_ACTION=redact
+CONTENT_SAFETY_PLACEHOLDER_TEXT=[Content removed due to safety policy]
+```
+
+### Create Custom Blocklists (Optional)
+
+For industry-specific term blocking:
+
+1. Visit [Azure Content Safety Studio](https://contentsafety.cognitive.azure.com/)
+2. Sign in with your Azure account
+3. Select your Content Safety resource
+4. Navigate to "Blocklists" tab
+5. Click "Create blocklist"
+6. Add terms to block (one per line)
+7. Save and copy the blocklist name to your `.env`
+
+### Verify Content Safety Configuration
+
+Test your setup using the frontend UI or API:
+
+```bash
+# Using curl
+curl -X POST "http://localhost:8000/safety/scan-text" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Test message for safety scanning"}'
+```
+
+Expected response:
+```json
+{
+  "isSafe": true,
+  "highestSeverity": 0,
+  "highestCategory": null,
+  "categorySeverities": {
+    "Hate": 0,
+    "SelfHarm": 0,
+    "Sexual": 0,
+    "Violence": 0
+  },
+  "flaggedCategories": [],
+  "blocklistMatches": []
+}
+```
+
+### Content Safety Best Practices
+
+✅ **Enable in Production** - Essential for public-facing applications
+✅ **Set Appropriate Thresholds** - Default of 4 is balanced for most use cases
+✅ **Use Blocklists** - Add industry-specific or company-specific terms
+✅ **Monitor Logs** - Review flagged content to refine policies
+✅ **Test Thoroughly** - Use the frontend testing panel before deployment
+
+See [`CONTENT_SAFETY.md`](CONTENT_SAFETY.md) for comprehensive configuration guide.
+
+## Complete Environment Configuration
+
+Your final `.env` file should include:
+
+```bash
+# ── Azure OpenAI ────────────────────────────────────────
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com
+AZURE_OPENAI_API_KEY=your-azure-openai-api-key-here
+AZURE_OPENAI_DEPLOYMENT_NAME=your-model-deployment-name
+AZURE_OPENAI_API_VERSION="2024-02-01"
+
+# ── Azure AI Foundry (existing project) ────────────────
+PROJECT_ENDPOINT=https://your-resource-name.services.ai.azure.com/api/projects/your-project-name
+PEOPLE_AGENT_ID=asst-your-people-agent-id-here
+KNOWLEDGE_AGENT_ID=asst-your-knowledge-agent-id-here
+MANAGED_IDENTITY_CLIENT_ID=your-user-managed-identity-client-id
+
+# ── Azure Content Safety (RECOMMENDED) ─────────────────
+CONTENT_SAFETY_ENDPOINT=https://your-content-safety.cognitiveservices.azure.com/
+CONTENT_SAFETY_API_KEY=your-content-safety-api-key-here
+CONTENT_SAFETY_ENABLED=true
+CONTENT_SAFETY_SEVERITY_THRESHOLD=4
+CONTENT_SAFETY_THRESHOLD_HATE=4
+CONTENT_SAFETY_THRESHOLD_SELFHARM=4
+CONTENT_SAFETY_THRESHOLD_SEXUAL=4
+CONTENT_SAFETY_THRESHOLD_VIOLENCE=4
+CONTENT_SAFETY_BLOCK_UNSAFE_INPUT=true
+CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT=true
+CONTENT_SAFETY_BLOCKLISTS=
+CONTENT_SAFETY_OUTPUT_ACTION=redact
+CONTENT_SAFETY_PLACEHOLDER_TEXT=[Content removed due to safety policy]
+
+FRONTEND_URL=http://localhost:3001
+```
+
 ## Next Steps
 
 Now move on to your choice of programming language to finish the second part of the workshop and call these agents from code:
@@ -195,3 +343,5 @@ Now move on to your choice of programming language to finish the second part of 
 - **.NET**: Navigate to `Backend/dotnet/` directory
 
 Each backend implementation provides examples and notebooks to help you integrate with the Azure AI agents you've just created.
+
+For detailed Content Safety documentation, see [`CONTENT_SAFETY.md`](CONTENT_SAFETY.md).

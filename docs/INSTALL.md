@@ -23,6 +23,7 @@ Install the following software and confirm the versions from a new terminal:
 - .NET Extension Pack
 - C# Dev Kit
 - Azure CLI Tools
+- REST Client (for testing APIs)
 
 
 > 💡 Working with Azure resources? Install the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) and run `az login`.
@@ -45,6 +46,31 @@ cp Backend/env.template python/langchain/.env
 ```
 
 Update the new `Backend/.env` with your Azure OpenAI endpoint, API key, deployment name, and (optionally) Azure AI Foundry project settings. The file is ignored by Git.
+
+### Required Configuration
+
+**Minimum (for basic functionality):**
+```env
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-api-key-here
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+AZURE_OPENAI_API_VERSION=2024-10-21
+```
+
+**Recommended (with Content Safety):**
+```env
+# ... Azure OpenAI config above ...
+
+# Azure Content Safety
+CONTENT_SAFETY_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
+CONTENT_SAFETY_API_KEY=your-content-safety-key
+CONTENT_SAFETY_ENABLED=true
+CONTENT_SAFETY_SEVERITY_THRESHOLD=4
+CONTENT_SAFETY_BLOCK_UNSAFE_INPUT=true
+CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT=true
+```
+
+See [`AI_SERVICES.md`](AI_SERVICES.md) for step-by-step Azure resource setup including Content Safety.
 
 ## 3. Set up backends
 

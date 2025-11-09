@@ -1,6 +1,6 @@
 # .NET Agent Framework
 
-A production-ready multi-agent orchestration framework built with .NET 9, ASP.NET Core, **Microsoft.Agents.AI Framework**, and Azure AI integration. This framework enables intelligent agent collaboration, conversation management, and flexible response formatting for complex AI-powered applications.
+A production-ready multi-agent orchestration framework built with .NET 9, ASP.NET Core, **Microsoft.Agents.AI Framework**, and Azure AI integration. This framework enables intelligent agent collaboration, conversation management, flexible response formatting, and **enterprise-grade content safety** for complex AI-powered applications.
 
 ## 🌟 Features
 
@@ -12,6 +12,7 @@ A production-ready multi-agent orchestration framework built with .NET 9, ASP.NE
 - **Agent Auto-Selection** - Automatic agent selection based on query intent when no agents specified
 - **Template System** - Pre-configured chat templates for common single and multi-agent scenarios
 - **Azure AI Integration** - Seamless integration with Azure AI Foundry and Azure OpenAI
+- **🛡️ Content Safety** - Built-in Azure AI Content Safety for input validation and output filtering
 - **Interactive Frontend** - React-based UI with voice input/output, markdown rendering, and real-time chat
 - **RESTful API** - Well-documented API with Swagger UI and comprehensive .http test collection
 
