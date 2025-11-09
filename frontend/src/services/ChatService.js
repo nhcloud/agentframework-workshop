@@ -14,22 +14,29 @@ class ChatService {
       },
     });
 
+    this.uploadApi = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 120000,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    // track the active request controller to allow cancel/stop
+    this.currentController = null;
+
     // Request interceptor
     this.api.interceptors.request.use(
       (config) => {
         console.log('Making request to:', config.url);
         return config;
       },
-      (error) => {
-        return Promise.reject(error);
-      }
+      (error) => Promise.reject(error)
     );
 
     // Response interceptor
     this.api.interceptors.response.use(
-      (response) => {
-        return response;
-      },
+      (response) => response,
       (error) => {
         console.error('API Error:', error.response?.data || error.message);
         return Promise.reject(error);
@@ -37,10 +44,27 @@ class ChatService {
     );
   }
 
+  beginRequest() {
+    // cancel any previous pending request before starting a new one
+    if (this.currentController) {
+      try { this.currentController.abort(); } catch {}
+    }
+    this.currentController = new AbortController();
+    return this.currentController;
+  }
+
+  cancelCurrentRequest() {
+    if (this.currentController) {
+      try { this.currentController.abort(); } catch {}
+      this.currentController = null;
+    }
+  }
+
   /**
    * Send message to single agent or multiple agents
    */
   async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null) {
+    const controller = this.beginRequest();
     try {
       // Handle single agent (backward compatibility)
       if (typeof agents === 'string') {
@@ -63,7 +87,7 @@ class ChatService {
         payload.format = format;
       }
 
-      const response = await this.api.post('/chat', payload);
+      const response = await this.api.post('/chat', payload, { signal: controller.signal });
 
       // Return full response data, including detailed format fields if present
       return {
@@ -80,7 +104,49 @@ class ChatService {
         active_participants: response.data.active_participants
       };
     } catch (error) {
+      if (axios.isCancel?.(error) || error?.name === 'CanceledError' || error?.message === 'canceled') {
+        throw new Error('Request canceled');
+      }
       throw new Error(error.response?.data?.detail || 'Failed to send message');
+    } finally {
+      this.currentController = null;
+    }
+  }
+
+  /**
+   * Send message with image to single agent or multiple agents
+   */
+  async sendMessageWithImage({ message, imageFile, sessionId = null, agents = null, maxTurns = null, format = null }) {
+    const controller = this.beginRequest();
+    try {
+      const form = new FormData();
+      form.append('Message', message);
+      if (imageFile) form.append('Image', imageFile);
+      if (sessionId) form.append('SessionId', sessionId);
+      if (agents) form.append('Agents', Array.isArray(agents) ? JSON.stringify(agents) : agents);
+      if (maxTurns !== null && maxTurns !== undefined) form.append('MaxTurns', String(maxTurns));
+      if (format) form.append('Format', format);
+
+      const response = await this.uploadApi.post('/chat/with-image', form, { signal: controller.signal });
+      return {
+        content: response.data.content,
+        agent: response.data.agent,
+        sessionId: response.data.session_id || response.data.conversation_id,
+        timestamp: response.data.timestamp || new Date().toISOString(),
+        metadata: response.data.metadata || {},
+        format: response.data.format,
+        responses: response.data.responses,
+        total_turns: response.data.total_turns,
+        conversation_id: response.data.conversation_id,
+        active_participants: response.data.active_participants
+      };
+    } catch (error) {
+      if (axios.isCancel?.(error) || error?.name === 'CanceledError' || error?.message === 'canceled') {
+        throw new Error('Request canceled');
+      }
+      throw new Error(error.response?.data?.detail || 'Failed to send message with image');
+    } finally {
+      this.currentController = null;
     }
   }
 
@@ -211,4 +277,4 @@ class ChatService {
   }
 }
 
-export default ChatService; 
+export default ChatService;

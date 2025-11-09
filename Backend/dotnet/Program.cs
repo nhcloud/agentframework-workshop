@@ -38,6 +38,13 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "A modern .NET 9 implementation of Microsoft Agent Framework with Azure AI integration"
     });
+    // Avoid schema id collisions (anonymous/object responses across endpoints)
+    c.CustomSchemaIds(type => type.FullName);
+    // If multiple actions have same path+verb, pick the first to avoid conflicts
+    c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
+    // Explicitly describe file uploads
+    c.MapType<IFormFile>(() => new OpenApiSchema { Type = "string", Format = "binary" });
+    c.SupportNonNullableReferenceTypes();
 });
 
 // Configure CORS - more permissive for development
@@ -82,7 +89,17 @@ builder.Services.Configure<AzureAIConfig>(options =>
     // ContentSafety
     var csEndpoint = Environment.GetEnvironmentVariable("CONTENT_SAFETY_ENDPOINT");
     var csApiKey = Environment.GetEnvironmentVariable("CONTENT_SAFETY_API_KEY");
+    var csEnabled = Environment.GetEnvironmentVariable("CONTENT_SAFETY_ENABLED");
     var csThreshold = Environment.GetEnvironmentVariable("CONTENT_SAFETY_SEVERITY_THRESHOLD");
+    var csHate = Environment.GetEnvironmentVariable("CONTENT_SAFETY_THRESHOLD_HATE");
+    var csSelfHarm = Environment.GetEnvironmentVariable("CONTENT_SAFETY_THRESHOLD_SELFHARM");
+    var csSexual = Environment.GetEnvironmentVariable("CONTENT_SAFETY_THRESHOLD_SEXUAL");
+    var csViolence = Environment.GetEnvironmentVariable("CONTENT_SAFETY_THRESHOLD_VIOLENCE");
+    var csBlockInput = Environment.GetEnvironmentVariable("CONTENT_SAFETY_BLOCK_UNSAFE_INPUT");
+    var csFilterOutput = Environment.GetEnvironmentVariable("CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT");
+    var csBlocklists = Environment.GetEnvironmentVariable("CONTENT_SAFETY_BLOCKLISTS");
+    var csOutputAction = Environment.GetEnvironmentVariable("CONTENT_SAFETY_OUTPUT_ACTION");
+    var csPlaceholder = Environment.GetEnvironmentVariable("CONTENT_SAFETY_PLACEHOLDER_TEXT");
     
     if (!string.IsNullOrEmpty(azureOpenAIEndpoint) && !string.IsNullOrEmpty(azureOpenAIApiKey))
     {
@@ -132,7 +149,17 @@ builder.Services.Configure<AzureAIConfig>(options =>
         {
             Endpoint = csEndpoint,
             ApiKey = csApiKey,
-            SeverityThreshold = int.TryParse(csThreshold, out var t) ? t : 5
+            Enabled = string.IsNullOrWhiteSpace(csEnabled) ? true : bool.TryParse(csEnabled, out var e) && e,
+            SeverityThreshold = int.TryParse(csThreshold, out var t) ? t : 5,
+            HateThreshold = int.TryParse(csHate, out var h) ? h : 4,
+            SelfHarmThreshold = int.TryParse(csSelfHarm, out var sh) ? sh : 4,
+            SexualThreshold = int.TryParse(csSexual, out var sx) ? sx : 4,
+            ViolenceThreshold = int.TryParse(csViolence, out var v) ? v : 4,
+            BlockUnsafeInput = string.IsNullOrWhiteSpace(csBlockInput) ? true : bool.TryParse(csBlockInput, out var bi) && bi,
+            FilterUnsafeOutput = string.IsNullOrWhiteSpace(csFilterOutput) ? true : bool.TryParse(csFilterOutput, out var fo) && fo,
+            Blocklists = csBlocklists,
+            OutputAction = string.IsNullOrWhiteSpace(csOutputAction) ? "redact" : csOutputAction,
+            PlaceholderText = string.IsNullOrWhiteSpace(csPlaceholder) ? "[Content removed due to safety policy]" : csPlaceholder
         };
     }
     else
@@ -169,13 +196,15 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
-var app = builder.Build();
+// Enable static file hosting for test UI
+builder.Services.AddDirectoryBrowser();
 
-// Add request logging middleware for debugging
+var app = builder.Build();
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
+    app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI(c => 
     {
@@ -200,49 +229,19 @@ if (!app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Fo
     app.UseHttpsRedirection();
 }
 
+app.UseStaticFiles();
 app.UseAuthorization();
 app.MapControllers();
 
 // Health check
-app.MapGet("/health", (Microsoft.Extensions.Options.IOptions<AzureAIConfig> configOptions) => 
-{
-    var azureConfig = configOptions.Value;
-    var hasAzureOpenAI = !string.IsNullOrEmpty(azureConfig?.AzureOpenAI?.Endpoint) && 
-                        !string.IsNullOrEmpty(azureConfig.AzureOpenAI.ApiKey);
-    var hasAzureFoundry = !string.IsNullOrEmpty(azureConfig?.AzureAIFoundry?.ProjectEndpoint);
-    var hasContentSafety = !string.IsNullOrWhiteSpace(azureConfig?.ContentSafety?.Endpoint);
-    
-    return new 
-    { 
-        status = "healthy", 
-        timestamp = DateTime.UtcNow,
-        framework = "Microsoft Agent Framework",
-        configuration = new
-        {
-            azure_openai = hasAzureOpenAI ? "configured" : "missing",
-            azure_ai_foundry = hasAzureFoundry ? "configured" : "missing",
-            content_safety = hasContentSafety ? "configured" : "missing",
-            foundry_agents = new
-            {
-                people_agent = !string.IsNullOrEmpty(azureConfig?.AzureAIFoundry?.PeopleAgentId) ? "configured" : "missing",
-                knowledge_agent = !string.IsNullOrEmpty(azureConfig?.AzureAIFoundry?.KnowledgeAgentId) ? "configured" : "missing"
-            },
-            timeout_settings = new
-            {
-                request_timeout = "5 minutes (all endpoints)",
-                http_client_timeout = "5 minutes",
-                keep_alive_timeout = "10 minutes"
-            }
-        },
-        agents = new { status = "available" },
-        session_manager = "operational"
-    };
-}).WithName("GetHealth").WithTags("Health");
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
+   .ExcludeFromDescription()
+   .WithName("GetHealth")
+   .WithTags("Health");
 
 // Start the application and keep it running
 Console.WriteLine("?? Starting .NET Agent Framework API...");
 Console.WriteLine("?? Swagger UI available at: http://localhost:8000");
 Console.WriteLine("?? Health endpoint: http://localhost:8000/health");
-Console.WriteLine("?? Microsoft Agent Framework with Azure AI Foundry integration ready!");
 
 app.Run();
