@@ -1,5 +1,6 @@
 using DotNetAgentFramework.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace DotNetAgentFramework.Controllers;
 
@@ -36,8 +37,8 @@ public class ChatController(
                 return BadRequest(new { detail = "Message is required" });
             }
 
-            // Content Safety - analyze user message
-            var userSafety = await _contentSafety.AnalyzeAsync(request.Message, HttpContext.RequestAborted);
+            // Content Safety - analyze user message (extended service)
+            var userSafety = await _contentSafety.AnalyzeTextAsync(request.Message, HttpContext.RequestAborted);
             if (!_contentSafety.IsSafe(userSafety))
             {
                 _logger.LogWarning("User message blocked by content safety. Highest severity {Severity} in {Category}", userSafety.HighestSeverity, userSafety.HighestCategory);
@@ -97,14 +98,14 @@ public class ChatController(
 
             var responseMessages = workflowResponse.Messages?.Where(m => m.Agent != "user").ToList() ?? new List<GroupChatMessage>();
 
-            // Output Content Safety: scan generated content
+            // Output Content Safety: scan generated content (extended filtering)
             foreach (var m in responseMessages)
             {
-                var outSafety = await _contentSafety.AnalyzeAsync(m.Content, HttpContext.RequestAborted);
+                var outSafety = await _contentSafety.AnalyzeTextAsync(m.Content, HttpContext.RequestAborted);
                 if (!_contentSafety.IsSafe(outSafety))
                 {
                     _logger.LogWarning("Blocked unsafe agent output from {Agent} with severity {Severity}", m.Agent, outSafety.HighestSeverity);
-                    m.Content = "[Content removed due to safety policy]";
+                    m.Content = _contentSafety.FilterOutput(m.Content, outSafety);
                     m.IsTerminated = true;
                 }
             }
@@ -153,10 +154,10 @@ public class ChatController(
                 var formattedResponse = await _responseFormatter.FormatGroupChatResponseAsync(workflowResponse, request.Message);
 
                 // Safety check synthesized content
-                var synthSafety = await _contentSafety.AnalyzeAsync(formattedResponse.Content, HttpContext.RequestAborted);
+                var synthSafety = await _contentSafety.AnalyzeTextAsync(formattedResponse.Content, HttpContext.RequestAborted);
                 var safeContent = _contentSafety.IsSafe(synthSafety)
                     ? formattedResponse.Content
-                    : "I’m sorry, I can’t share that. The generated content was flagged by safety checks.";
+                    : _contentSafety.FilterOutput(formattedResponse.Content, synthSafety);
 
                 return Ok(new
                 {
@@ -318,4 +319,81 @@ public class ChatController(
             return StatusCode(500, new { detail = "Internal server error while retrieving sessions" });
         }
     }
+
+    // New: Chat with media (multipart/form-data)
+    [HttpPost("with-image")]
+    [RequestSizeLimit(52_428_800)] // 50 MB
+    public async Task<ActionResult<object>> ChatWithImage([FromForm] ChatWithMediaForm form)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(form.Message))
+            {
+                return BadRequest(new { detail = "Message is required" });
+            }
+
+            // Content Safety - analyze message
+            var userSafety = await _contentSafety.AnalyzeTextAsync(form.Message, HttpContext.RequestAborted);
+            if (!_contentSafety.IsSafe(userSafety))
+            {
+                _logger.LogWarning("User message blocked by content safety.");
+                return BadRequest(new { detail = "Your message appears to contain unsafe content. Please rephrase and try again." });
+            }
+
+            // Optional: image safety
+            string msg = form.Message;
+            if (form.Image != null && form.Image.Length > 0)
+            {
+                await using var stream = form.Image.OpenReadStream();
+                var imgSafety = await _contentSafety.AnalyzeImageAsync(stream, HttpContext.RequestAborted);
+                if (!_contentSafety.IsSafe(imgSafety))
+                {
+                    _logger.LogWarning("Blocked unsafe user image {Name}", form.Image.FileName);
+                    return BadRequest(new { detail = "Attached image was flagged by safety checks. Please use a different image." });
+                }
+                // Add a lightweight hint so model knows an image was attached (no image processing)
+                msg += $"\n\n[User attached image: {form.Image.FileName}, {form.Image.Length} bytes]";
+            }
+
+            // Parse agents
+            List<string>? agents = null;
+            if (!string.IsNullOrWhiteSpace(form.Agents))
+            {
+                try
+                {
+                    agents = JsonSerializer.Deserialize<List<string>>(form.Agents!);
+                }
+                catch
+                {
+                    agents = form.Agents!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+                }
+            }
+
+            var request = new ChatRequest
+            {
+                Message = msg,
+                SessionId = form.SessionId,
+                Agents = agents,
+                MaxTurns = form.MaxTurns,
+                Format = string.IsNullOrWhiteSpace(form.Format) ? "user_friendly" : form.Format
+            };
+
+            return await Chat(request);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in chat with image");
+            return StatusCode(500, new { detail = "Internal server error during chat with image" });
+        }
+    }
+}
+
+public class ChatWithMediaForm
+{
+    public string Message { get; set; } = string.Empty;
+    public string? SessionId { get; set; }
+    public string? Agents { get; set; } // JSON array string or comma-separated
+    public int? MaxTurns { get; set; }
+    public string? Format { get; set; }
+    public IFormFile? Image { get; set; }
 }

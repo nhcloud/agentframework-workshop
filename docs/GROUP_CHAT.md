@@ -1,6 +1,6 @@
 # AgentGroupChat - Multi-Framework Group Chat Implementation
 
-This directory contains complete group chat implementations for both **Semantic Kernel** and **LangChain** frameworks, providing intelligent multi-agent conversations with configurable templates and web API integration.
+This directory contains complete group chat implementations for both **Semantic Kernel** and **LangChain** frameworks, providing intelligent multi-agent conversations with configurable templates, web API integration, and **enterprise-grade content safety**.
 
 ## 🚀 Features
 
@@ -11,6 +11,7 @@ This directory contains complete group chat implementations for both **Semantic 
 - **Web API Integration**: RESTful endpoints for all operations
 - **Session Management**: Persistent conversations across HTTP requests
 - **Role-Based Participants**: Facilitators, participants, and observers
+- **🛡️ Content Safety**: Automatic input validation and output filtering
 
 ### Framework-Specific Features
 
@@ -19,12 +20,25 @@ This directory contains complete group chat implementations for both **Semantic 
 - Azure OpenAI service configuration
 - Kernel-based agent orchestration
 - Service configuration management
+- Integrated content safety filtering
 
 #### LangChain (`langchain/`)
 - Azure AI Chat Completions model integration
 - AI-powered speaker selection algorithm
 - Conversation summarization capabilities
 - Advanced message routing with context awareness
+- Content safety middleware integration
+
+### 🛡️ Content Safety Integration
+
+Both implementations include Azure AI Content Safety:
+- **Input Validation**: User messages scanned before agent processing
+- **Output Filtering**: Agent responses filtered before delivery
+- **Configurable Thresholds**: Per-category severity controls
+- **Automatic Blocking**: Unsafe content blocked with user-friendly messages
+- **Monitoring**: Detailed logging of flagged content
+
+See [`CONTENT_SAFETY.md`](CONTENT_SAFETY.md) for configuration details.
 
 ## 📁 Directory Structure
 
@@ -33,6 +47,8 @@ Backend/python/
 ├── sk/                             # Semantic Kernel Implementation
 │   ├── agents/
 │   │   └── agent_group_chat.py     # SemanticKernelAgentGroupChat
+│   ├── services/
+│   │   └── content_safety_service.py # Content Safety Service
 │   ├── group_chat_config.py        # Configuration loader
 │   ├── example_template_usage.py   # Usage examples
 │   ├── config.yml                  # Templates and settings
@@ -40,6 +56,8 @@ Backend/python/
 └── langchain/                      # LangChain Implementation  
     ├── agents/
     │   └── agent_group_chat.py     # LangChainAgentGroupChat
+    ├── services/
+    │   └── content_safety_service.py # Content Safety Service
     ├── group_chat_config.py        # Configuration loader
     ├── example_template_usage.py   # Usage examples  
     ├── config.yml                  # Templates and settings
@@ -220,95 +238,49 @@ group_chats:
       max_turns: 10
       auto_select_speaker: true
       participants:
-
-### Summarization (LangChain)
-You can request an aggregate summary of the multi-agent interaction by setting `"summarize": true` in the request body. The API will include a `summary` field in the response.
-
-```bash
-curl -X POST http://localhost:8000/group-chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Who is Jai and what are his current responsibilities?",
-    "session_id": "6b3d8220-8d3d-4a2b-a09a-3b760f29421a",
-    "summarize": true
-  }'
-```
-
-Response snippet:
-```json
-{
-  "responses": [ ... ],
-  "summary": "Objective: ... Key Facts: ... Perspectives: ... Open Questions: ...",
-  "content": "(Backward compatible single string: summary if present else last agent response)"
-}
-```
-If no LLM routing model is configured, a heuristic fallback summary is returned.
-
-#### Dedicated Summary Model (Optional)
-Set the following environment variables to use a higher-context / cheaper model for summarization:
-```env
-AZURE_OPENAI_SUMMARY_DEPLOYMENT_NAME=gpt-4o-mini
-SUMMARY_MAX_TOKENS=800                 # Max tokens requested for the summary
-SUMMARY_TRANSCRIPT_CHAR_LIMIT=6000     # Cap on transcript characters fed to summary model
-```
-If `AZURE_OPENAI_SUMMARY_DEPLOYMENT_NAME` is not set the system reuses the routing model. The endpoint also returns a top-level `content` field for legacy UI components expecting a single string (prefers `summary`, falls back to last agent message).
-
-### Broadcast vs Sequential Modes
-You can control how a group chat processes a user prompt:
-
-| Mode | Behavior |
-|------|----------|
-| `sequential` (default) | Agents take turns; each agent may build on the previous agent's response until max_turns or termination. |
-| `broadcast` | All active (or filtered) agents answer the original user message in parallel (one logical turn). No chaining between agents for that round. |
-
-Request example (broadcast with subset of agents):
-```bash
-curl -X POST http://localhost:8000/group-chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Compare architectural options for the new service.",
-    "mode": "broadcast",
-    "agents": ["knowledge_finder", "generic_agent"],
-    "summarize": true
-  }'
-```
-
-Response will contain one response per agent (single turn), plus optional `summary`.
         - name: "Role 1"
           role: "facilitator"
           priority: 3
           instructions: "Detailed instructions for this role..."
 ```
+## 🛡️ Content Safety Configuration
 
-## 🔍 Key Differences
+Enable content safety for group chats by adding to your `.env`:
 
-| Feature | Semantic Kernel | LangChain |
-|---------|----------------|-----------|
-| **Agent Integration** | Native ChatCompletionAgent | Custom LangChainAgent wrapper |
-| **Service Config** | Kernel services | Azure AI Chat Completions |
-| **Speaker Selection** | Rule-based priority | AI-powered intelligent selection |
-| **Summarization** | Basic conversation history | AI-generated summaries |
-| **Extensibility** | SK plugin system | LangChain tool ecosystem |
+```env
+# Azure Content Safety
+CONTENT_SAFETY_ENABLED=true
+CONTENT_SAFETY_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
+CONTENT_SAFETY_API_KEY=your-api-key-here
+CONTENT_SAFETY_SEVERITY_THRESHOLD=4
+CONTENT_SAFETY_BLOCK_UNSAFE_INPUT=true
+CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT=true
+```
 
-## 🎯 Production Considerations
+### How It Works in Group Chat
 
-### Performance
-- Connection pooling for Azure services
-- Async/await throughout for scalability
-- Session-based memory management
-- Configurable conversation limits
+```
+User Message
+    ↓
+[Content Safety Check] ← Block if unsafe
+    ↓ (if safe)
+Agent 1 Response
+    ↓
+[Content Safety Filter] ← Filter if unsafe
+    ↓
+Agent 2 Response
+    ↓
+[Content Safety Filter] ← Filter if unsafe
+    ↓
+Combined Response
+```
 
-### Security
-- Environment variable configuration
-- No hardcoded credentials
-- Request validation and sanitization
-- Error handling with appropriate HTTP status codes
+### Benefits
 
-### Monitoring
-- Comprehensive logging
-- Health check endpoints
-- Session tracking and cleanup
-- Performance metrics collection
+✅ **Multi-layer Protection**: Each agent response is filtered individually
+✅ **Graceful Degradation**: Unsafe responses replaced with safe messages
+✅ **Audit Trail**: All flagged content logged for review
+✅ **User Experience**: Clear, respectful error messages
 
 ## 📚 Next Steps
 

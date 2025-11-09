@@ -45,7 +45,17 @@ public class ContentSafetyConfig
 {
     public string? Endpoint { get; set; }
     public string? ApiKey { get; set; }
-    public int SeverityThreshold { get; set; } = 5; // Default threshold aligned with Azure guidance
+    public int SeverityThreshold { get; set; } = 5; // Legacy single threshold
+    public bool Enabled { get; set; } = true;
+    public int HateThreshold { get; set; } = 4;
+    public int SelfHarmThreshold { get; set; } = 4;
+    public int SexualThreshold { get; set; } = 4;
+    public int ViolenceThreshold { get; set; } = 4;
+    public bool BlockUnsafeInput { get; set; } = true;
+    public bool FilterUnsafeOutput { get; set; } = true;
+    public string? Blocklists { get; set; } // Comma-separated names
+    public string OutputAction { get; set; } = "redact"; // redact | placeholder | empty
+    public string PlaceholderText { get; set; } = "[Content removed due to safety policy]";
 
     public bool IsConfigured()
         => !string.IsNullOrWhiteSpace(Endpoint) && !string.IsNullOrWhiteSpace(ApiKey);

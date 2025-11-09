@@ -18,11 +18,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon,
+  Plus,
+  X,
+  Shield,
+  Upload,
+  FileText
 } from 'lucide-react';
 
 import ChatService from './services/ChatService';
 import VoiceService from './services/VoiceService';
+import SafetyTester from './SafetyTester';
 
 // Global styles
 const GlobalStyle = createGlobalStyle`
@@ -414,7 +421,7 @@ const VoiceButton = styled(motion.button)`
     background: ${props => props.active ? props.theme.colors.primaryDark : props.theme.colors.primary};
     color: white;
     border-color: ${props => props.theme.colors.primary};
-    transform: translateY(-2px);
+    transform: none;
     box-shadow: ${props => props.theme.shadows.lg};
   }
 
@@ -673,12 +680,19 @@ const ChatInput = styled.div`
 const InputContainer = styled.div`
   display: flex;
   gap: 12px;
-  align-items: flex-end;
+  align-items: center;
 `;
 
-const TextInput = styled.textarea`
+// Wrapper to host the textarea and the + button inside it
+const TextInputWrapper = styled.div`
+  position: relative;
   flex: 1;
-  padding: 14px 20px;
+`;
+
+// Adjust textarea to leave space for the + button on the left
+const TextInput = styled.textarea`
+  width: 100%;
+  padding: 14px 20px 14px 56px; /* extra left padding for + button */
   border: 2px solid ${props => props.theme.colors.border};
   border-radius: 24px;
   background: ${props => props.theme.colors.surface};
@@ -715,105 +729,63 @@ const TextInput = styled.textarea`
   }
 `;
 
-const InputButtons = styled.div`
-  display: flex;
-  gap: 8px;
-  align-items: center;
-`;
-
-const MicButton = styled(motion.button)`
-  width: 48px;
-  height: 48px;
-  border: 2px solid ${props => props.active ? props.theme.colors.error : props.theme.colors.border};
+// "+" button placed inside the textarea (left like ChatGPT)
+const PlusInsideButton = styled(motion.button)`
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
   border-radius: ${props => props.theme.borderRadius.full};
-  background: ${props => props.active 
-    ? props.theme.colors.error 
-    : props.theme.colors.surface
-  };
-  color: ${props => props.active ? 'white' : props.theme.colors.textSecondary};
-  cursor: pointer;
+  border: 1px solid ${props => props.theme.colors.border};
+  background: ${props => props.theme.colors.surface};
+  color: ${props => props.theme.colors.textSecondary};
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
-  box-shadow: ${props => props.active 
-    ? '0 4px 20px rgba(220, 38, 38, 0.3)' 
-    : '0 2px 8px rgba(0, 0, 0, 0.1)'
-  };
+  cursor: pointer;
+  transition: all 0.2s ease;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: ${props => props.active 
-      ? '0 6px 24px rgba(220, 38, 38, 0.4)' 
-      : '0 4px 12px rgba(0, 0, 0, 0.15)'
-    };
-    background: ${props => props.active 
-      ? props.theme.colors.error 
-      : props.theme.colors.backgroundAlt
-    };
+    background: ${props => props.theme.colors.backgroundAlt};
+    border-color: ${props => props.theme.colors.primary};
+    color: ${props => props.theme.colors.primary};
   }
 
-  &:active {
-    transform: translateY(0);
-  }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-const SendButton = styled(motion.button)`
+// Stop button to cancel in-flight request
+const StopButton = styled(motion.button)`
   width: 48px;
   height: 48px;
   border: none;
   border-radius: ${props => props.theme.borderRadius.full};
-  background: linear-gradient(135deg, ${props => props.theme.colors.primary} 0%, ${props => props.theme.colors.primaryDark} 100%);
+  background: linear-gradient(135deg, ${props => props.theme.colors.error} 0%, ${props => props.theme.colors.warning} 100%);
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
   position: relative;
   overflow: hidden;
 
   &::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, ${props => props.theme.colors.primaryDark} 0%, ${props => props.theme.colors.professional} 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(135deg, ${props => props.theme.colors.error} 0%, ${props => props.theme.colors.error} 100%);
+    opacity: 0; transition: opacity 0.3s ease;
   }
-
-  & > * {
-    position: relative;
-    z-index: 1;
-  }
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
-    
-    &::before {
-      opacity: 1;
-    }
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    background: ${props => props.theme.colors.textMuted};
-  }
+  & > * { position: relative; z-index: 1; }
+  &:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(220,38,38,0.4); &::before{opacity:1;} }
+  &:active { transform: translateY(0); }
 `;
 
-const LoadingIndicator = styled(motion.div)`
+const ChatLoadingIndicator = styled(motion.div)`
   display: flex;
   align-items: center;
   gap: 10px;
@@ -849,43 +821,67 @@ const LoadingIndicator = styled(motion.div)`
       transform: scale(0.6);
       opacity: 0.5;
     }
-    40% {
+    40 {
       transform: scale(1);
       opacity: 1;
     }
   }
 `;
 
-// Custom Select styles
-const selectStyles = {
-  control: (provided, state) => ({
-    ...provided,
-    border: `1px solid ${state.isFocused ? theme.colors.primary : theme.colors.border}`,
-    borderRadius: theme.borderRadius.md,
-    boxShadow: state.isFocused ? `0 0 0 3px ${theme.colors.primary}20` : 'none',
-    '&:hover': {
-      borderColor: theme.colors.primary,
-    },
-  }),
-  multiValue: (provided) => ({
-    ...provided,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.sm,
-  }),
-  multiValueLabel: (provided) => ({
-    ...provided,
-    color: 'white',
-    fontSize: '12px',
-  }),
-  multiValueRemove: (provided) => ({
-    ...provided,
-    color: 'white',
-    '&:hover': {
-      backgroundColor: theme.colors.primaryDark,
-      color: 'white',
-    },
-  }),
-};
+const MicButton = styled(motion.button)`
+  width: 48px;
+  height: 48px;
+  border: 2px solid ${props => props.active ? props.theme.colors.error : props.theme.colors.border};
+  border-radius: ${props => props.theme.borderRadius.full};
+  background: ${props => props.active ? props.theme.colors.error : props.theme.colors.surface};
+  color: ${props => props.active ? 'white' : props.theme.colors.textSecondary};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: ${props => props.active ? '0 4px 20px rgba(220, 38, 38, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)'};
+
+  &:hover {
+    background: ${props => props.active ? props.theme.colors.error : props.theme.colors.backgroundAlt};
+  }
+
+  &:active { transform: translateY(0); }
+`;
+
+const SendButton = styled(motion.button)`
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: ${props => props.theme.borderRadius.full};
+  background: linear-gradient(135deg, ${props => props.theme.colors.primary} 0%, ${props => props.theme.colors.primaryDark} 100%);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, ${props => props.theme.colors.primaryDark} 0%, ${props => props.theme.colors.professional} 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  & > * { position: relative; z-index: 1; }
+  &:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4); &::before { opacity: 1; } }
+  &:active { transform: translateY(0); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); background: ${props => props.theme.colors.textMuted}; }
+`;
 
 function App() {
   // Core state
@@ -900,11 +896,10 @@ function App() {
   const [maxTurns, setMaxTurns] = useState(2);
   const [responseFormat, setResponseFormat] = useState('user_friendly'); // 'user_friendly' or 'detailed'
   const [agentLoadError, setAgentLoadError] = useState(null);
-
   
   // Voice state
   const [isVoiceInputEnabled, setIsVoiceInputEnabled] = useState(false);
-  const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(false); // Default OFF
+  const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -919,7 +914,54 @@ function App() {
   // Refs
   const messagesEndRef = useRef(null);
   const textInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  
+  // Image attachment state
+  const [attachedImage, setAttachedImage] = useState(null);
 
+  // Local select styles (avoid linter false-positive)
+  const customSelectStyles = {
+    control: (provided, state) => ({
+      ...provided,
+      border: `1px solid ${state.isFocused ? theme.colors.primary : theme.colors.border}`,
+      borderRadius: theme.borderRadius.md,
+      boxShadow: state.isFocused ? `0 0 0 3px ${theme.colors.primary}20` : 'none',
+      '&:hover': { borderColor: theme.colors.primary },
+    }),
+    multiValue: (provided) => ({
+      ...provided,
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.borderRadius.sm,
+    }),
+    multiValueLabel: (provided) => ({
+      ...provided,
+      color: 'white',
+      fontSize: '12px',
+    }),
+    multiValueRemove: (provided) => ({
+      ...provided,
+      color: 'white',
+      '&:hover': { backgroundColor: theme.colors.primaryDark, color: 'white' },
+    }),
+  };
+
+  // Inline preview chip to satisfy linter scope
+  const PreviewChipLocal = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid ${props => props.theme.colors.border};
+    border-radius: 9999px;
+    background: ${props => props.theme.colors.backgroundAlt};
+    color: ${props => props.theme.colors.textSecondary};
+    font-size: 12px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `;
+  
   // Initialize
   useEffect(() => {
     loadAvailableAgents();
@@ -983,11 +1025,11 @@ function App() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+    if ((!inputMessage.trim() && !attachedImage) || isLoading) return;
 
     const userMessage = {
       id: Date.now(),
-      content: inputMessage,
+      content: inputMessage || (attachedImage ? '[Sent an image]' : ''),
       isUser: true,
       timestamp: new Date().toISOString()
     };
@@ -997,15 +1039,30 @@ function App() {
     setIsLoading(true);
 
     try {
-      // Always use the unified chat endpoint
       const agentIds = selectedAgents.map(agent => agent.id || agent.name);
-      const response = await chatService.sendMessage(
-        userMessage.content,
-        sessionId,
-        agentIds.length > 0 ? agentIds : null,
-        selectedAgents.length > 1 ? maxTurns : null, // Only pass maxTurns for multi-agent conversations
-        selectedAgents.length > 1 ? responseFormat : null // Pass format for multi-agent only
-      );
+
+      let response;
+      if (attachedImage) {
+        response = await chatService.sendMessageWithImage({
+          message: userMessage.content || 'Image attached',
+          imageFile: attachedImage,
+          sessionId,
+          agents: agentIds.length > 0 ? agentIds : null,
+          maxTurns: selectedAgents.length > 1 ? maxTurns : null,
+          format: selectedAgents.length > 1 ? responseFormat : null
+        });
+        // Clear image after sending
+        setAttachedImage(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        response = await chatService.sendMessage(
+          userMessage.content,
+          sessionId,
+          agentIds.length > 0 ? agentIds : null,
+          selectedAgents.length > 1 ? maxTurns : null,
+          selectedAgents.length > 1 ? responseFormat : null
+        );
+      }
 
       // Handle different response formats
       if (responseFormat === 'detailed' && response.responses) {
@@ -1042,17 +1099,19 @@ function App() {
       }
 
     } catch (error) {
-      console.error('Failed to send message:', error);
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        content: `Error: ${error.message}`,
-        isUser: false,
-        timestamp: new Date().toISOString(),
-        isError: true
-      }]);
+      if (error.message === 'Request canceled') {
+        setMessages(prev => [...prev, { id: Date.now() + 1, content: 'Request canceled.', isUser: false, timestamp: new Date().toISOString(), isError: true }]);
+      } else {
+        setMessages(prev => [...prev, { id: Date.now() + 1, content: `Error: ${error.message}`, isUser: false, timestamp: new Date().toISOString(), isError: true }]);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleStop = () => {
+    chatService.cancelCurrentRequest();
+    setIsLoading(false);
   };
 
   const handleKeyPress = (e) => {
@@ -1113,6 +1172,12 @@ function App() {
     }));
   };
 
+  const onSelectFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setAttachedImage(file);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyle />
@@ -1163,7 +1228,7 @@ function App() {
                   }))}
                   onChange={(selected) => setSelectedAgents(selected || [])}
                   options={formatAgentOptions(availableAgents)}
-                  styles={selectStyles}
+                  styles={customSelectStyles}
                   placeholder="Choose agents..."
                   isSearchable
                   closeMenuOnSelect={false}
@@ -1295,6 +1360,9 @@ function App() {
               )}
             </VoiceControls>
           </VoiceSection>
+
+          {/* Use the SafetyTester component with tabbed interface */}
+          <SafetyTester chatService={chatService} />
           </SidebarContent>
         </Sidebar>
 
@@ -1357,9 +1425,8 @@ function App() {
                 </Message>
               ))}
             </AnimatePresence>
-            
             {isLoading && (
-              <LoadingIndicator
+              <ChatLoadingIndicator
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
@@ -1370,44 +1437,80 @@ function App() {
                   <div className="dot"></div>
                   <div className="dot"></div>
                 </div>
-              </LoadingIndicator>
+              </ChatLoadingIndicator>
             )}
-            
             <div ref={messagesEndRef} />
           </ChatMessages>
 
           <ChatInput>
             <InputContainer>
-              <TextInput
-                ref={textInputRef}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={isListening ? "Listening..." : "Type your message..."}
-                disabled={isLoading || isListening}
-              />
-              
-              <InputButtons>
-                {isVoiceInputEnabled && (
-                  <MicButton
-                    active={isListening}
-                    onClick={toggleVoiceInput}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    {isListening ? <MicOff size={20} /> : <Mic size={20} />}
-                  </MicButton>
-                )}
+              <TextInputWrapper>
+                <TextInput
+                  ref={textInputRef}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={isListening ? 'Listening...' : 'Type your message...'}
+                  disabled={isLoading || isListening}
+                />
                 
-                <SendButton
-                  onClick={handleSendMessage}
-                  disabled={!inputMessage.trim() || isLoading}
+                {attachedImage && (
+                  <PreviewChipLocal>
+                    <ImageIcon size={14} />
+                    {attachedImage.name} ({Math.round(attachedImage.size / 1024)} KB)
+                  </PreviewChipLocal>
+                )}
+
+                <PlusInsideButton
+                  onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                  title="Attach an image"
+                  disabled={isLoading}
+                >
+                  <Plus size={18} />
+                </PlusInsideButton>
+                <input
+                  id="file-input"
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  onChange={onSelectFile}
+                  style={{ display: 'none' }}
+                  disabled={isLoading}
+                />
+              </TextInputWrapper>
+
+              {isVoiceInputEnabled && (
+                <MicButton
+                  active={isListening}
+                  onClick={toggleVoiceInput}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
+                  disabled={isLoading}
+                >
+                  {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+                </MicButton>
+              )}
+
+              {isLoading ? (
+                <StopButton
+                  onClick={handleStop}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Stop request"
+                >
+                  <X size={20} />
+                </StopButton>
+              ) : (
+                <SendButton
+                  onClick={handleSendMessage}
+                  disabled={(!inputMessage.trim() && !attachedImage) || isLoading}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Send"
                 >
                   <Send size={20} />
                 </SendButton>
-              </InputButtons>
+              )}
             </InputContainer>
           </ChatInput>
         </MainContent>
