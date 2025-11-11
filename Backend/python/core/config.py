@@ -58,10 +58,33 @@ class Settings(BaseSettings):
     GOOGLE_GEMINI_MODEL_ID: str = Field(default="gemini-2.0-flash", alias="GOOGLE_GEMINI_MODEL_ID")
     
     # Azure AI Content Safety configuration
-    AZURE_CONTENT_SAFETY_ENDPOINT: Optional[str] = Field(default=None, alias="AZURE_CONTENT_SAFETY_ENDPOINT")
-    AZURE_CONTENT_SAFETY_KEY: Optional[str] = Field(default=None, alias="AZURE_CONTENT_SAFETY_KEY")
+    AZURE_CONTENT_SAFETY_ENDPOINT: Optional[str] = Field(default=None, alias="CONTENT_SAFETY_ENDPOINT")
+    AZURE_CONTENT_SAFETY_KEY: Optional[str] = Field(default=None, alias="CONTENT_SAFETY_API_KEY")
     CONTENT_SAFETY_ENABLED: bool = Field(default=True, alias="CONTENT_SAFETY_ENABLED")
-    CONTENT_SAFETY_THRESHOLD: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD")  # 0-7, higher = stricter
+    CONTENT_SAFETY_SEVERITY_THRESHOLD: int = Field(default=5, alias="CONTENT_SAFETY_SEVERITY_THRESHOLD")  # Legacy single threshold (0-7)
+    
+    # Per-category thresholds (matching .NET implementation)
+    CONTENT_SAFETY_THRESHOLD_HATE: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD_HATE")
+    CONTENT_SAFETY_THRESHOLD_SELFHARM: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD_SELFHARM")
+    CONTENT_SAFETY_THRESHOLD_SEXUAL: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD_SEXUAL")
+    CONTENT_SAFETY_THRESHOLD_VIOLENCE: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD_VIOLENCE")
+    
+    # Input/Output filtering options
+    CONTENT_SAFETY_BLOCK_UNSAFE_INPUT: bool = Field(default=True, alias="CONTENT_SAFETY_BLOCK_UNSAFE_INPUT")
+    CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT: bool = Field(default=True, alias="CONTENT_SAFETY_FILTER_UNSAFE_OUTPUT")
+    
+    # Blocklists support (comma-separated blocklist names)
+    CONTENT_SAFETY_BLOCKLISTS: Optional[str] = Field(default=None, alias="CONTENT_SAFETY_BLOCKLISTS")
+    
+    # Output filtering actions: "redact", "placeholder", "empty"
+    CONTENT_SAFETY_OUTPUT_ACTION: str = Field(default="redact", alias="CONTENT_SAFETY_OUTPUT_ACTION")
+    CONTENT_SAFETY_PLACEHOLDER_TEXT: str = Field(
+        default="[Content removed due to safety policy]", 
+        alias="CONTENT_SAFETY_PLACEHOLDER_TEXT"
+    )
+    
+    # Legacy aliases for backwards compatibility
+    CONTENT_SAFETY_THRESHOLD: int = Field(default=4, alias="CONTENT_SAFETY_THRESHOLD")
     BLOCK_UNSAFE_INPUT: bool = Field(default=True, alias="BLOCK_UNSAFE_INPUT")
     FILTER_UNSAFE_OUTPUT: bool = Field(default=True, alias="FILTER_UNSAFE_OUTPUT")
     

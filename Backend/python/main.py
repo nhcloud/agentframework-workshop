@@ -21,12 +21,13 @@ from fastapi.responses import JSONResponse
 env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)
 
-from routers import chat, agents
+from routers import chat, agents, safety
 from core.config import settings
 from core.logging_config import setup_logging
 from services.agent_service import AgentService
 from services.session_manager import SessionManager
 from services.workflow_orchestration_service import WorkflowOrchestrationService
+from services.content_safety_service import ContentSafetyService
 
 # Setup logging
 setup_logging()
@@ -41,14 +42,21 @@ async def lifespan(app: FastAPI):
     # Initialize services
     session_manager = SessionManager()
     agent_service = AgentService()
-    workflow_service = WorkflowOrchestrationService(agent_service, session_manager)
+    content_safety_service = ContentSafetyService()
+    workflow_service = WorkflowOrchestrationService(
+        agent_service, 
+        session_manager,
+        content_safety_service=content_safety_service
+    )
     
     # Store services in app state
     app.state.session_manager = session_manager
     app.state.agent_service = agent_service  
     app.state.workflow_service = workflow_service
+    app.state.content_safety_service = content_safety_service
     
     logger.info("Agent Framework application started successfully")
+    logger.info(f"Content Safety: {'Enabled' if content_safety_service.enabled else 'Disabled'}")
     yield
     
     logger.info("Shutting down Agent Framework application...")
@@ -85,6 +93,7 @@ app.add_middleware(
 # Include routers
 app.include_router(chat.router)
 app.include_router(agents.router)
+app.include_router(safety.router)
 
 
 @app.get("/health")
