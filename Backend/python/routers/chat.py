@@ -5,9 +5,10 @@ This router provides the main chat functionality, similar to the .NET ChatContro
 """
 
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import json
 
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from models.chat_models import (
@@ -35,6 +36,8 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
     
     This endpoint automatically uses group chat when multiple agents are selected,
     similar to the .NET ChatController.
+    
+    Enhanced with content safety filtering matching .NET implementation.
     """
     try:
         if not request.message or request.message.strip() == "":
@@ -44,6 +47,19 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
         agent_service = app_request.app.state.agent_service
         session_manager = app_request.app.state.session_manager
         workflow_service = app_request.app.state.workflow_service
+        content_safety = app_request.app.state.content_safety_service
+        
+        # Content Safety - analyze user message (input filtering)
+        user_safety = await content_safety.analyze_text_async(request.message)
+        if not content_safety.is_safe(user_safety):
+            logger.warning(
+                f"User message blocked by content safety. "
+                f"Highest severity {user_safety.highest_severity} in {user_safety.highest_category}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="Your message appears to contain unsafe content. Please rephrase and try again."
+            )
         
         # Initialize response formatter
         response_formatter = ResponseFormatterService(agent_service)
@@ -87,6 +103,21 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
             # Use workflow service for parallel execution
             group_response = await workflow_service.execute_workflow(group_request)
             
+            # Output Content Safety: scan generated content (filter agent responses)
+            response_messages = [m for m in group_response.get("messages", []) if m.get("agent") != "user"]
+            for message in response_messages:
+                out_safety = await content_safety.analyze_text_async(message.get("content", ""))
+                if not content_safety.is_safe(out_safety):
+                    logger.warning(
+                        f"Blocked unsafe agent output from {message.get('agent')} "
+                        f"with severity {out_safety.highest_severity}"
+                    )
+                    message["content"] = content_safety.filter_output(
+                        message.get("content", ""), 
+                        out_safety
+                    )
+                    message["is_terminated"] = True
+            
             # Check requested format
             requested_format = (request.format or "user_friendly").lower()
             
@@ -101,6 +132,16 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
                 formatted_response = await response_formatter.format_group_chat_response(
                     group_response, "user_friendly"
                 )
+                
+                # Safety check synthesized content
+                synth_content = formatted_response.get("content", "")
+                synth_safety = await content_safety.analyze_text_async(synth_content)
+                if not content_safety.is_safe(synth_safety):
+                    formatted_response["content"] = content_safety.filter_output(
+                        synth_content,
+                        synth_safety
+                    )
+                
                 return formatted_response
         
         else:
@@ -112,6 +153,19 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
                 agent_response = await agent_service.chat_with_agent(
                     agent_name, request.message, conversation_history
                 )
+                
+                # Content Safety - check agent output
+                agent_content = agent_response.get("content", "")
+                out_safety = await content_safety.analyze_text_async(agent_content)
+                if not content_safety.is_safe(out_safety):
+                    logger.warning(
+                        f"Agent {agent_name} generated unsafe content with severity "
+                        f"{out_safety.highest_severity}. Filtering output."
+                    )
+                    agent_response["content"] = content_safety.filter_output(
+                        agent_content,
+                        out_safety
+                    )
                 
                 # Add user message to session
                 from models.chat_models import GroupChatMessage
@@ -347,3 +401,103 @@ async def cleanup_expired_sessions(app_request: Request, background_tasks: Backg
     except Exception as ex:
         logger.error(f"Error initiating session cleanup: {str(ex)}")
         raise HTTPException(status_code=500, detail="Failed to initiate session cleanup")
+
+
+@router.post("/with-image", response_model=Dict[str, Any])
+async def chat_with_image(
+    app_request: Request,
+    message: str = Form(..., description="Chat message"),
+    session_id: Optional[str] = Form(None, description="Optional session ID"),
+    agents: Optional[str] = Form(None, description="Comma-separated agent names or JSON array"),
+    max_turns: Optional[int] = Form(None, description="Maximum turns for multi-agent chat"),
+    format: Optional[str] = Form(None, description="Response format: user_friendly or detailed"),
+    image: Optional[UploadFile] = File(None, description="Optional image file")
+) -> Dict[str, Any]:
+    """
+    Chat with optional image attachment.
+    
+    Matches .NET ChatController /chat/with-image endpoint.
+    Supports multipart/form-data for image uploads with content safety checks.
+    
+    Args:
+        message: The chat message (required)
+        app_request: FastAPI request object
+        session_id: Optional session ID for conversation continuity
+        agents: Comma-separated agent names or JSON array string
+        max_turns: Maximum conversation turns for multi-agent
+        format: Response format (user_friendly or detailed)
+        image: Optional image file to attach
+        
+    Returns:
+        Chat response with safety filtering applied
+        
+    Raises:
+        HTTPException: If validation fails or safety checks block content
+    """
+    try:
+        if not message or not message.strip():
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        # Get services
+        content_safety = app_request.app.state.content_safety_service
+        
+        # Content Safety - analyze user message
+        user_safety = await content_safety.analyze_text_async(message)
+        if not content_safety.is_safe(user_safety):
+            logger.warning("User message blocked by content safety in chat with image")
+            raise HTTPException(
+                status_code=400,
+                detail="Your message appears to contain unsafe content. Please rephrase and try again."
+            )
+        
+        # Prepare message with image info if provided
+        processed_message = message
+        if image and image.size > 0:
+            # Validate file size (50 MB limit)
+            max_size = 52_428_800  # 50 MB
+            if image.size > max_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Image size exceeds maximum allowed size of {max_size / 1_048_576} MB"
+                )
+            
+            # Image safety check
+            image_bytes = await image.read()
+            img_safety = await content_safety.analyze_image_async(image_bytes)
+            if not content_safety.is_safe(img_safety):
+                logger.warning(f"Blocked unsafe user image: {image.filename}")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Attached image was flagged by safety checks. Please use a different image."
+                )
+            
+            # Add image metadata to message (lightweight hint - no actual image processing)
+            processed_message += f"\n\n[User attached image: {image.filename}, {image.size} bytes]"
+        
+        # Parse agents parameter
+        agents_list = None
+        if agents:
+            try:
+                # Try parsing as JSON first
+                agents_list = json.loads(agents)
+            except:
+                # Fall back to comma-separated
+                agents_list = [a.strip() for a in agents.split(",") if a.strip()]
+        
+        # Create chat request
+        chat_request = ChatRequest(
+            message=processed_message,
+            session_id=session_id,
+            agents=agents_list,
+            max_turns=max_turns,
+            format=format or "user_friendly"
+        )
+        
+        # Process through main chat endpoint
+        return await chat(chat_request, app_request)
+        
+    except HTTPException:
+        raise
+    except Exception as ex:
+        logger.error(f"Error in chat with image: {str(ex)}")
+        raise HTTPException(status_code=500, detail="Internal server error during chat with image")
