@@ -110,7 +110,7 @@ public abstract class BaseAgent(ILogger logger) : IAgent
     {
         var sessionId = request.SessionId ?? Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
-        
+
         var content = await RespondAsync(request.Message, conversationHistory, request.Context);
         var endTime = DateTime.UtcNow;
 
@@ -169,10 +169,10 @@ public class AzureOpenAIAgent(
             // Create Azure OpenAI client and get chat client
             var azureClient = new AzureOpenAIClient(new Uri(_endpoint), _credential);
             var chatClient = azureClient.GetChatClient(_modelDeployment);
-            
+
             // Set the chat client for the base agent to use
             SetChatClient(chatClient);
-            
+
             _logger.LogInformation("Initialized Azure OpenAI agent {AgentName} with model {Model}", Name, _modelDeployment);
             await Task.CompletedTask;
         }
@@ -221,8 +221,7 @@ public class AzureAIFoundryAgent(
             _azureAgentClient = new PersistentAgentsClient(_projectEndpoint, _credential);
 
             // Create or get the AI agent using the sample pattern
-            _foundryAgent = await _azureAgentClient.GetAIAgentAsync(_agentId
-                               );
+            _foundryAgent = _azureAgentClient.AsIChatClient(_agentId).CreateAIAgent();
 
             _logger.LogInformation("Initialized Azure AI Foundry agent {AgentName} with ID {AgentId}", Name, _foundryAgent.Id);
             await Task.CompletedTask;
@@ -266,13 +265,13 @@ public class AzureAIFoundryAgent(
 
             // Run the agent following the sample pattern
             var result = await _foundryAgent.RunAsync(enhancedMessage, thread, agentOptions);
-            
+
             // Extract content from the response - AgentRunResponse likely has a ToString() method or Response property
             var responseText = result?.ToString() ?? "I apologize, but I couldn't generate a response from the Azure AI Foundry agent.";
-            
-            _logger.LogInformation("Azure AI Foundry agent {AgentId} generated response: {ResponseLength} characters", 
+
+            _logger.LogInformation("Azure AI Foundry agent {AgentId} generated response: {ResponseLength} characters",
                 _foundryAgent.Id, responseText.Length);
-            
+
             return responseText;
         }
         catch (Exception ex)
@@ -323,7 +322,7 @@ public class AzureAIFoundryAgent(
                     _logger.LogWarning(ex, "Failed to cleanup thread for agent {AgentName}", Name);
                 }
             }
-            
+
             // Clean up agent
             //try
             //{
@@ -335,7 +334,7 @@ public class AzureAIFoundryAgent(
             //    _logger.LogWarning(ex, "Failed to cleanup agent {AgentName}", Name);
             //}
         }
-        
+
         _threadCache.Clear();
     }
 }

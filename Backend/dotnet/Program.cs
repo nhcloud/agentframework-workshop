@@ -1,4 +1,3 @@
-using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerUI;
 using DotNetEnv;
 using DotNetAgentFramework.Configuration;
@@ -32,18 +31,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo 
-    { 
-        Title = ".NET Agent Framework API", 
-        Version = "v1",
-        Description = "A modern .NET 9 implementation of Microsoft Agent Framework with Azure AI integration"
-    });
     // Avoid schema id collisions (anonymous/object responses across endpoints)
     c.CustomSchemaIds(type => type.FullName);
     // If multiple actions have same path+verb, pick the first to avoid conflicts
     c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
-    // Explicitly describe file uploads
-    c.MapType<IFormFile>(() => new OpenApiSchema { Type = "string", Format = "binary" });
     c.SupportNonNullableReferenceTypes();
 });
 

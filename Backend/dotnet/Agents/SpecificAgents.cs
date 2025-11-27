@@ -60,15 +60,16 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
         _logger.LogInformation("Initializing People Lookup Agent with Azure AI Foundry agent ID: {AgentId}", agentId);
 
         // Create credential - use managed identity if client ID is provided, otherwise use default
+        // Replace obsolete ManagedIdentityCredential constructor usage with the recommended pattern
         Azure.Core.TokenCredential credential = !string.IsNullOrEmpty(managedIdentityClientId)
-            ? new ManagedIdentityCredential(managedIdentityClientId)
+            ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId))
             : new DefaultAzureCredential();
 
         // Create PersistentAgentsClient following the sample pattern
         _azureAgentClient = new PersistentAgentsClient(projectEndpoint, credential);
 
         // Get the AI agent using the sample pattern
-        _agent = await _azureAgentClient.GetAIAgentAsync(agentId);
+        _agent =  _azureAgentClient.AsIChatClient(agentId).CreateAIAgent();
 
         _logger.LogInformation("Initialized People Lookup Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
     }
@@ -240,15 +241,16 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
         _logger.LogInformation("Initializing Knowledge Finder Agent with Azure AI Foundry agent ID: {AgentId}", agentId);
 
         // Create credential - use managed identity if client ID is provided, otherwise use default
+        // Replace obsolete ManagedIdentityCredential constructor usage with the recommended pattern
         Azure.Core.TokenCredential credential = !string.IsNullOrEmpty(managedIdentityClientId)
-            ? new ManagedIdentityCredential(managedIdentityClientId)
+            ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId))
             : new DefaultAzureCredential();
 
         // Create PersistentAgentsClient following the sample pattern
         _azureAgentClient = new PersistentAgentsClient(projectEndpoint, credential);
 
         // Get the AI agent using the sample pattern
-        _agent = await _azureAgentClient.GetAIAgentAsync(agentId);
+        _agent = _azureAgentClient.AsIChatClient(agentId).CreateAIAgent();
 
         _logger.LogInformation("Initialized Knowledge Finder Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
     }
