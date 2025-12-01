@@ -3,6 +3,7 @@ using DotNetAgentFramework.Configuration;
 using DotNetAgentFramework.Services;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace DotNetAgentFramework.Agents;
 
@@ -60,15 +61,16 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
         _logger.LogInformation("Initializing People Lookup Agent with Azure AI Foundry agent ID: {AgentId}", agentId);
 
         // Create credential - use managed identity if client ID is provided, otherwise use default
+        // Replace obsolete ManagedIdentityCredential constructor usage with the recommended pattern
         Azure.Core.TokenCredential credential = !string.IsNullOrEmpty(managedIdentityClientId)
-            ? new ManagedIdentityCredential(managedIdentityClientId)
+            ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId))
             : new DefaultAzureCredential();
 
         // Create PersistentAgentsClient following the sample pattern
         _azureAgentClient = new PersistentAgentsClient(projectEndpoint, credential);
 
         // Get the AI agent using the sample pattern
-        _agent = await _azureAgentClient.GetAIAgentAsync(agentId);
+        _agent =  _azureAgentClient.AsIChatClient(agentId).CreateAIAgent();
 
         _logger.LogInformation("Initialized People Lookup Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
     }
@@ -240,15 +242,16 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
         _logger.LogInformation("Initializing Knowledge Finder Agent with Azure AI Foundry agent ID: {AgentId}", agentId);
 
         // Create credential - use managed identity if client ID is provided, otherwise use default
+        // Replace obsolete ManagedIdentityCredential constructor usage with the recommended pattern
         Azure.Core.TokenCredential credential = !string.IsNullOrEmpty(managedIdentityClientId)
-            ? new ManagedIdentityCredential(managedIdentityClientId)
+            ? new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId))
             : new DefaultAzureCredential();
 
         // Create PersistentAgentsClient following the sample pattern
         _azureAgentClient = new PersistentAgentsClient(projectEndpoint, credential);
 
         // Get the AI agent using the sample pattern
-        _agent = await _azureAgentClient.GetAIAgentAsync(agentId);
+        _agent = _azureAgentClient.AsIChatClient(agentId).CreateAIAgent();
 
         _logger.LogInformation("Initialized Knowledge Finder Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
     }
@@ -369,12 +372,13 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
 /// <summary>
 /// Generic Agent - Default agent for general-purpose conversations
 /// </summary>
-public class GenericAgent(ILogger logger, AgentInstructionsService instructionsService, IOptions<AzureAIConfig>? azureConfig = null) : BaseAgent(logger)
+public class GenericAgent(ILogger logger, AgentInstructionsService instructionsService, IOptions<AzureAIConfig>? azureConfig = null, bool enableMemory = false) : BaseAgent(logger)
 {
     private readonly AgentInstructionsService _instructionsService = instructionsService;
     private readonly AzureAIConfig? _azureConfig = azureConfig?.Value;
     private Microsoft.Agents.AI.ChatClientAgent? _agent;
     private readonly Dictionary<string, Microsoft.Agents.AI.AgentThread> _threadCache = new();
+    private readonly Dictionary<string, JsonElement> _memoryStates = new();
 
     public override string Name => "generic_agent";
     public override string Description => _instructionsService.GetDescription("generic_agent");
@@ -384,6 +388,9 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
+
+        // Set memory flag from constructor
+        EnableLongRunningMemory = enableMemory;
 
         try
         {
@@ -411,10 +418,36 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
 
         // Create Azure OpenAI client and get chat client following the new pattern
         var azureClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential());
-        _agent = azureClient.GetChatClient(deploymentName)
-            .CreateAIAgent(instructions: Instructions, tools: [AIFunctionFactory.Create(new WeatherTool().GetWeather)]);
+        var chatClient = azureClient.GetChatClient(deploymentName);
+        var iChatClient = chatClient.AsIChatClient();
+
+        // If memory is enabled, create with AIContextProvider using UserInfoMemory
+        if (EnableLongRunningMemory)
+        {
+            _logger.LogInformation("Initializing Generic Agent with UserInfoMemory for long-running memory support");
+            
+            // Create AIAgent with UserInfoMemory context provider using ChatClientAgentOptions
+            var agentOptions = new Microsoft.Agents.AI.ChatClientAgentOptions
+            {
+                Instructions = Instructions,
+                AIContextProviderFactory = ctx => new UserInfoMemory(
+                    iChatClient,
+                    ctx.SerializedState,
+                    ctx.JsonSerializerOptions)
+            };
+            
+            _agent = iChatClient.CreateAIAgent(agentOptions);
+        }
+        else
+        {
+            _logger.LogInformation("Initializing Generic Agent without memory");
+            
+            // Standard agent without memory - using simple overload
+            _agent = iChatClient.CreateAIAgent(instructions: Instructions);
+        }
         
-        _logger.LogInformation("Initialized Generic Agent with Azure OpenAI deployment: {DeploymentName}", deploymentName);
+        _logger.LogInformation("Initialized Generic Agent with Azure OpenAI deployment: {DeploymentName} (Memory: {MemoryEnabled})", 
+            deploymentName, EnableLongRunningMemory);
         return Task.CompletedTask;
     }
 
@@ -433,13 +466,14 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
 
         try
         {
-            _logger.LogInformation("Processing message with Generic Agent");
+            _logger.LogInformation("Processing message with Generic Agent (Memory: {MemoryEnabled})", EnableLongRunningMemory);
 
             // Get or create thread for this conversation
             var thread = GetOrCreateThread(conversationHistory);
 
             // Create agent options following the sample pattern
-            var agentOptions = new Microsoft.Agents.AI.ChatClientAgentRunOptions(new() { MaxOutputTokens = 1000 });
+            var chatOptions = new ChatOptions { MaxOutputTokens = 1000 };
+            var agentOptions = new Microsoft.Agents.AI.ChatClientAgentRunOptions(chatOptions);
 
             // Add context to message if provided
             var enhancedMessage = message;
@@ -488,6 +522,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
     {
         // Clean up threads - simplified for Azure OpenAI only
         _threadCache.Clear();
+        _memoryStates.Clear();
         
         _logger.LogDebug("Generic Agent cleanup completed");
     }

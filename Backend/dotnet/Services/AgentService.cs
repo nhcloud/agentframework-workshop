@@ -53,8 +53,27 @@ public class AgentService : IAgentService
         var logger = _serviceProvider.GetRequiredService<ILogger<T>>();
         var instructionsService = _serviceProvider.GetRequiredService<AgentInstructionsService>();
         
+        // Read memory setting from environment variable (matching .env pattern)
+        var enableMemoryEnv = Environment.GetEnvironmentVariable("ENABLE_LONG_RUNNING_MEMORY");
+        var enableMemory = !string.IsNullOrEmpty(enableMemoryEnv) && 
+                          bool.TryParse(enableMemoryEnv, out var memEnabled) && 
+                          memEnabled;
+        
+        // Log memory setting for debugging
+        _logger.LogDebug("Long-running memory setting: {MemoryEnabled} (from env: {EnvValue})", 
+            enableMemory, enableMemoryEnv ?? "not set");
+        
         // Create agent with configuration support
-        var agent = (T)Activator.CreateInstance(typeof(T), logger, instructionsService, _azureConfigOptions)!;
+        IAgent agent;
+        if (typeof(T) == typeof(GenericAgent))
+        {
+            agent = (T)Activator.CreateInstance(typeof(T), logger, instructionsService, _azureConfigOptions, enableMemory)!;
+        }
+        else
+        {
+            agent = (T)Activator.CreateInstance(typeof(T), logger, instructionsService, _azureConfigOptions)!;
+        }
+        
         await agent.InitializeAsync();
         return agent;
     }
