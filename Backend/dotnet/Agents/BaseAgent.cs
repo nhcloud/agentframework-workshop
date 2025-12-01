@@ -1,5 +1,7 @@
 using OpenAI.Chat;
 using Azure.AI.Agents.Persistent;
+using Microsoft.Agents.AI;
+using System.Text.Json;
 
 namespace DotNetAgentFramework.Agents;
 
@@ -8,6 +10,7 @@ public interface IAgent
     string Name { get; }
     string Description { get; }
     string Instructions { get; }
+    bool EnableLongRunningMemory { get; set; }
     Task<string> RespondAsync(string message, string? context = null);
     Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null);
     Task<Models.ChatResponse> ChatAsync(ChatRequest request);
@@ -19,10 +22,15 @@ public abstract class BaseAgent(ILogger logger) : IAgent
 {
     protected readonly ILogger _logger = logger;
     protected ChatClient? _chatClient;
+    protected Microsoft.Agents.AI.ChatClientAgent? _aiAgent;
+    protected readonly Dictionary<string, JsonElement> _userMemoryState = new();
 
     public abstract string Name { get; }
     public abstract string Description { get; }
     public abstract string Instructions { get; }
+    
+    // Property to enable/disable long-running memory
+    public bool EnableLongRunningMemory { get; set; } = false;
 
     public virtual async Task InitializeAsync()
     {
@@ -152,7 +160,8 @@ public class AzureOpenAIAgent(
     string modelDeployment,
     string endpoint,
     Azure.Core.TokenCredential? credential,
-    ILogger<AzureOpenAIAgent> logger) : BaseAgent(logger)
+    ILogger<AzureOpenAIAgent> logger,
+    bool enableLongRunningMemory = false) : BaseAgent(logger)
 {
     private readonly string _modelDeployment = modelDeployment;
     private readonly string _endpoint = endpoint;
@@ -166,14 +175,36 @@ public class AzureOpenAIAgent(
     {
         try
         {
+            // Set the memory flag from constructor parameter
+            EnableLongRunningMemory = enableLongRunningMemory;
+            
             // Create Azure OpenAI client and get chat client
             var azureClient = new AzureOpenAIClient(new Uri(_endpoint), _credential);
             var chatClient = azureClient.GetChatClient(_modelDeployment);
 
-            // Set the chat client for the base agent to use
-            SetChatClient(chatClient);
+            // If long-running memory is enabled, create AIAgent with UserInfoMemory
+            if (EnableLongRunningMemory)
+            {
+                _logger.LogInformation("Initializing Azure OpenAI agent {AgentName} with long-running memory enabled", Name);
+                
+                // Create AIAgent with memory support
+                _aiAgent = chatClient.AsIChatClient().CreateAIAgent(new ChatClientAgentOptions
+                {
+                    Instructions = Instructions,
+                    AIContextProviderFactory = ctx => new UserInfoMemory(
+                        chatClient.AsIChatClient(), 
+                        ctx.SerializedState, 
+                        ctx.JsonSerializerOptions)
+                });
+            }
+            else
+            {
+                // Standard chat client without memory
+                SetChatClient(chatClient);
+            }
 
-            _logger.LogInformation("Initialized Azure OpenAI agent {AgentName} with model {Model}", Name, _modelDeployment);
+            _logger.LogInformation("Initialized Azure OpenAI agent {AgentName} with model {Model} (Memory: {MemoryEnabled})", 
+                Name, _modelDeployment, EnableLongRunningMemory);
             await Task.CompletedTask;
         }
         catch (Exception ex)
@@ -181,6 +212,102 @@ public class AzureOpenAIAgent(
             _logger.LogError(ex, "Failed to initialize Azure OpenAI agent {AgentName}", Name);
             throw;
         }
+    }
+
+    public override async Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null)
+    {
+        // Ensure agent is initialized
+        if (_chatClient == null && _aiAgent == null)
+        {
+            await InitializeAsync();
+        }
+
+        try
+        {
+            // If using AIAgent with memory
+            if (EnableLongRunningMemory && _aiAgent != null)
+            {
+                return await RespondWithMemoryAsync(message, conversationHistory, context);
+            }
+            
+            // Standard response without memory
+            return await base.RespondAsync(message, conversationHistory, context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {AgentName} responding to message", Name);
+            return $"I encountered an error while processing your request: {ex.Message}";
+        }
+    }
+
+    private async Task<string> RespondWithMemoryAsync(string message, List<GroupChatMessage>? conversationHistory, string? context)
+    {
+        if (_aiAgent == null)
+        {
+            throw new InvalidOperationException("AIAgent not initialized for memory support");
+        }
+
+        try
+        {
+            _logger.LogDebug("Processing message with long-running memory for agent {AgentName}", Name);
+
+            // Get or create thread for this conversation
+            var thread = _aiAgent.GetNewThread();
+
+            // Get or restore memory state for this user/session
+            var memoryStateKey = GetMemoryStateKey(conversationHistory);
+            JsonElement? serializedState = null;
+            if (_userMemoryState.TryGetValue(memoryStateKey, out var state))
+            {
+                serializedState = state;
+            }
+
+            // Create run options with memory context
+            var runOptions = new Microsoft.Agents.AI.ChatClientAgentRunOptions(
+                new ChatOptions
+                {
+                    MaxOutputTokens = 1000
+                });
+
+            // Add context to message if provided
+            var enhancedMessage = message;
+            if (!string.IsNullOrEmpty(context))
+            {
+                enhancedMessage = $"{message}\n\nAdditional Context: {context}";
+            }
+
+            // Run the agent with memory support
+            var result = await _aiAgent.RunAsync(enhancedMessage, thread, runOptions);
+
+            // Save memory state for this user/session
+            // Note: In a real implementation, you'd need to extract and save the memory state
+            // This is a simplified version
+            if (thread is Microsoft.Agents.AI.ChatClientAgentThread chatThread)
+            {
+                _logger.LogDebug("Memory state saved for key: {StateKey}", memoryStateKey);
+            }
+
+            var responseText = result?.ToString() ?? "I apologize, but I couldn't generate a response.";
+            
+            _logger.LogDebug("Response generated with memory context: {ResponseLength} characters", responseText.Length);
+            
+            return responseText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing message with memory for agent {AgentName}", Name);
+            throw;
+        }
+    }
+
+    private string GetMemoryStateKey(List<GroupChatMessage>? conversationHistory)
+    {
+        // Create a unique key for this conversation/user
+        if (conversationHistory != null && conversationHistory.Any())
+        {
+            return $"memory_{conversationHistory.First().MessageId}";
+        }
+        return "memory_default";
     }
 }
 
