@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     SESSION_CLEANUP_INTERVAL_HOURS: int = 24
     SESSION_MAX_AGE_DAYS: int = 7
     
+    # Long-running memory feature
+    ENABLE_LONG_RUNNING_MEMORY: bool = Field(default=False, alias="ENABLE_LONG_RUNNING_MEMORY")
+    
     # Caching
     CACHE_ENABLED: bool = True
     CACHE_MAX_SIZE: int = 1000
