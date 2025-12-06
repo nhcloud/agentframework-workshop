@@ -21,6 +21,9 @@ public class ChatRequest
 
     [JsonPropertyName("format")]
     public string? Format { get; set; }
+    
+    [JsonPropertyName("enable_memory")]
+    public bool? EnableMemory { get; set; }
 }
 
 public class ChatResponse
