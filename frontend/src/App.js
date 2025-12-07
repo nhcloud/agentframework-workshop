@@ -897,6 +897,9 @@ function App() {
   const [responseFormat, setResponseFormat] = useState('user_friendly'); // 'user_friendly' or 'detailed'
   const [agentLoadError, setAgentLoadError] = useState(null);
   
+  // Memory toggle state
+  const [enableMemory, setEnableMemory] = useState(false);
+  
   // Voice state
   const [isVoiceInputEnabled, setIsVoiceInputEnabled] = useState(false);
   const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(false);
@@ -1049,7 +1052,8 @@ function App() {
           sessionId,
           agents: agentIds.length > 0 ? agentIds : null,
           maxTurns: selectedAgents.length > 1 ? maxTurns : null,
-          format: selectedAgents.length > 1 ? responseFormat : null
+          format: selectedAgents.length > 1 ? responseFormat : null,
+          enableMemory: enableMemory
         });
         // Clear image after sending
         setAttachedImage(null);
@@ -1060,7 +1064,8 @@ function App() {
           sessionId,
           agentIds.length > 0 ? agentIds : null,
           selectedAgents.length > 1 ? maxTurns : null,
-          selectedAgents.length > 1 ? responseFormat : null
+          selectedAgents.length > 1 ? responseFormat : null,
+          enableMemory
         );
       }
 
@@ -1234,6 +1239,33 @@ function App() {
                   closeMenuOnSelect={false}
                   isDisabled={availableAgents.length === 0}
                 />
+                
+                {/* Memory Toggle */}
+                <VoiceToggle style={{ marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>{enableMemory ? '🧠' : '💭'}</span>
+                    <span>Agent Memory</span>
+                  </div>
+                  <ToggleSwitch
+                    active={enableMemory}
+                    onClick={() => setEnableMemory(!enableMemory)}
+                    whileTap={{ scale: 0.95 }}
+                  />
+                </VoiceToggle>
+                {enableMemory && (
+                  <div style={{ 
+                    fontSize: '12px', 
+                    color: theme.colors.textSecondary, 
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    background: theme.colors.backgroundAlt,
+                    borderRadius: theme.borderRadius.sm,
+                    borderLeft: `3px solid ${theme.colors.primary}`
+                  }}>
+                    💡 Agent will remember your name and preferences across messages
+                  </div>
+                )}
+                
                 {selectedAgents.length > 1 && (
                   <>
                     <p style={{ fontSize: '12px', color: theme.colors.textSecondary, marginTop: '8px' }}>

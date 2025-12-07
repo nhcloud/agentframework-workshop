@@ -63,7 +63,7 @@ class ChatService {
   /**
    * Send message to single agent or multiple agents
    */
-  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null) {
+  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null, enableMemory = null) {
     const controller = this.beginRequest();
     try {
       // Handle single agent (backward compatibility)
@@ -85,6 +85,11 @@ class ChatService {
       // Add format if provided
       if (format !== null && format !== undefined) {
         payload.format = format;
+      }
+
+      // Add enable_memory if provided
+      if (enableMemory !== null && enableMemory !== undefined) {
+        payload.enable_memory = enableMemory;
       }
 
       const response = await this.api.post('/chat', payload, { signal: controller.signal });
@@ -116,7 +121,7 @@ class ChatService {
   /**
    * Send message with image to single agent or multiple agents
    */
-  async sendMessageWithImage({ message, imageFile, sessionId = null, agents = null, maxTurns = null, format = null }) {
+  async sendMessageWithImage({ message, imageFile, sessionId = null, agents = null, maxTurns = null, format = null, enableMemory = null }) {
     const controller = this.beginRequest();
     try {
       const form = new FormData();
@@ -126,6 +131,7 @@ class ChatService {
       if (agents) form.append('Agents', Array.isArray(agents) ? JSON.stringify(agents) : agents);
       if (maxTurns !== null && maxTurns !== undefined) form.append('MaxTurns', String(maxTurns));
       if (format) form.append('Format', format);
+      if (enableMemory !== null && enableMemory !== undefined) form.append('EnableMemory', String(enableMemory));
 
       const response = await this.uploadApi.post('/chat/with-image', form, { signal: controller.signal });
       return {

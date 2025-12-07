@@ -7,7 +7,7 @@ namespace DotNetAgentFramework.Services;
 public interface IAgentService
 {
     Task<IEnumerable<AgentInfo>> GetAvailableAgentsAsync();
-    Task<IAgent?> GetAgentAsync(string agentName);
+    Task<IAgent?> GetAgentAsync(string agentName, bool enableMemory = false);
     Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request);
     Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request, List<GroupChatMessage>? conversationHistory);
     Task<IAgent?> CreateAzureFoundryAgentAsync(string agentType);
@@ -48,20 +48,13 @@ public class AgentService : IAgentService
         };
     }
 
-    private async Task<IAgent> CreateStandardAgentAsync<T>() where T : BaseAgent
+    private async Task<IAgent> CreateStandardAgentAsync<T>(bool enableMemory = false) where T : BaseAgent
     {
         var logger = _serviceProvider.GetRequiredService<ILogger<T>>();
         var instructionsService = _serviceProvider.GetRequiredService<AgentInstructionsService>();
         
-        // Read memory setting from environment variable (matching .env pattern)
-        var enableMemoryEnv = Environment.GetEnvironmentVariable("ENABLE_LONG_RUNNING_MEMORY");
-        var enableMemory = !string.IsNullOrEmpty(enableMemoryEnv) && 
-                          bool.TryParse(enableMemoryEnv, out var memEnabled) && 
-                          memEnabled;
-        
         // Log memory setting for debugging
-        _logger.LogDebug("Long-running memory setting: {MemoryEnabled} (from env: {EnvValue})", 
-            enableMemory, enableMemoryEnv ?? "not set");
+        _logger.LogDebug("Creating agent with memory setting: {MemoryEnabled}", enableMemory);
         
         // Create agent with configuration support
         IAgent agent;
@@ -292,11 +285,11 @@ public class AgentService : IAgentService
         }
     }
 
-    public async Task<IAgent?> GetAgentAsync(string agentName)
+    public async Task<IAgent?> GetAgentAsync(string agentName, bool enableMemory = false)
     {
         var normalizedName = agentName.ToLowerInvariant();
         
-        _logger.LogInformation("Retrieving agent: {AgentName}", agentName);
+        _logger.LogInformation("Retrieving agent: {AgentName} with memory: {MemoryEnabled}", agentName, enableMemory);
 
         // Check for Azure AI Foundry agents first
         if (normalizedName.StartsWith("foundry_"))
@@ -345,10 +338,19 @@ public class AgentService : IAgentService
                 }
             }
 
-            // Use standard Azure OpenAI agent
-            var standardAgent = await factory();
-            _logger.LogInformation("Using Azure OpenAI agent for {AgentName}", agentName);
-            return standardAgent;
+            // Use standard Azure OpenAI agent - create new instance with memory setting
+            if (normalizedName == "generic_agent" || normalizedName == "generic")
+            {
+                var standardAgent = await CreateStandardAgentAsync<GenericAgent>(enableMemory);
+                _logger.LogInformation("Using Azure OpenAI agent for {AgentName} with memory: {MemoryEnabled}", agentName, enableMemory);
+                return standardAgent;
+            }
+            else
+            {
+                var standardAgent = await factory();
+                _logger.LogInformation("Using Azure OpenAI agent for {AgentName}", agentName);
+                return standardAgent;
+            }
         }
 
         _logger.LogWarning("Agent '{AgentName}' not found", agentName);
@@ -362,7 +364,14 @@ public class AgentService : IAgentService
 
     public async Task<DotNetAgentFramework.Models.ChatResponse> ChatWithAgentAsync(string agentName, ChatRequest request, List<GroupChatMessage>? conversationHistory)
     {
-        var agent = await GetAgentAsync(agentName);
+        // Determine memory setting: request flag > environment variable > default false
+        var enableMemory = request.EnableMemory ?? 
+                          (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_LONG_RUNNING_MEMORY"), out var envMemory) && envMemory);
+        
+        _logger.LogDebug("Chat with {AgentName}: memory={MemoryEnabled} (from request: {RequestMemory}, env: {EnvMemory})", 
+            agentName, enableMemory, request.EnableMemory, Environment.GetEnvironmentVariable("ENABLE_LONG_RUNNING_MEMORY"));
+        
+        var agent = await GetAgentAsync(agentName, enableMemory);
         if (agent == null)
         {
             throw new ArgumentException($"Agent '{agentName}' not found");

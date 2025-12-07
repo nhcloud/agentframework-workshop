@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     agents: Optional[List[str]] = Field(default=None, description="List of agent names to use")
     max_turns: Optional[int] = Field(default=3, description="Maximum number of turns for group chat")
     format: Optional[str] = Field(default="user_friendly", description="Response format preference")
+    enable_memory: Optional[bool] = Field(default=None, description="Enable long-running memory for personalized responses")
 
 
 class ChatResponse(BaseModel):
