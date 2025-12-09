@@ -180,8 +180,8 @@ public class ResponseFormatterService(ILogger<ResponseFormatterService> logger) 
             // Group messages by agent to find the most relevant contributions
             var messagesByAgent = messages.GroupBy(m => m.Agent).ToList();
 
-            // Check if we have a clear answer from a specialist agent (e.g., people_lookup found contact info)
-            var specialistAgents = new[] { "foundry_people_lookup", "foundry_knowledge_finder" };
+            // Check if we have a clear answer from a specialist agent (e.g., ms_foundry_people_agent found contact info)
+            var specialistAgents = new[] { "foundry_ms_foundry_people_agent", "foundry_knowledge_finder" };
             var specialistResponses = messagesByAgent
                 .Where(g => specialistAgents.Any(sa => g.Key?.Contains(sa, StringComparison.OrdinalIgnoreCase) ?? false))
                 .SelectMany(g => g)

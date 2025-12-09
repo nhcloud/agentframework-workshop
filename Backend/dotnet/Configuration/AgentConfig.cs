@@ -25,6 +25,8 @@ public class FrameworkConfig
     public string Provider { get; set; } = string.Empty;
     public string? AgentId { get; set; }
     public string? ProjectEndpoint { get; set; }
+    // Optional Bedrock-specific model override
+    public string? ModelId { get; set; }
 }
 
 public class AppConfig

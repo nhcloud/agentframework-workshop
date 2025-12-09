@@ -19,7 +19,6 @@ azure_openai:
 azure_foundry:
   project_endpoint: "${PROJECT_ENDPOINT}"
   people_agent_id: "${PEOPLE_AGENT_ID}"
-  knowledge_agent_id: "${KNOWLEDGE_AGENT_ID}"
 
 # Session management
 sessions:
@@ -43,7 +42,7 @@ logging:
 
 # Agent configurations
 agents:
-  generic_agent:
+  azure_openai_agent:
     type: "generic"
     enabled: true
     instructions: |
@@ -82,8 +81,8 @@ agents:
     framework_config:
       provider: "azure_openai"
 
-  people_lookup:
-    type: "people_lookup"
+  ms_foundry_people_agent:
+    type: "ms_foundry_people_agent"
     enabled: true
     instructions: |
       You are a People Lookup Agent, an expert at finding and providing information about people, contacts, and team members using Microsoft Agent Framework.
@@ -126,46 +125,51 @@ agents:
       agent_id: "${PEOPLE_AGENT_ID}"
       project_endpoint: "${PROJECT_ENDPOINT}"
 
-  knowledge_finder:
-    type: "knowledge_finder"
+  bedrock_agent:
+    type: "aws_bedrock"
     enabled: true
     instructions: |
-      You are a Knowledge Finder Agent, a specialist at searching, retrieving, and organizing information from various knowledge sources using Microsoft Agent Framework.
+      You are an HR and workplace policy assistant running on AWS Bedrock (amazon.nova-pro-v1:0).
+      You help employees with questions about company policies, benefits, time off, and general HR guidance.
 
       Your expertise includes:
-      • Document Search: Finding relevant documents, wikis, and knowledge bases
-      • Research Assistance: Discovering and synthesizing information from multiple sources
-      • Information Organization: Structuring and summarizing complex knowledge
-      • Context Provision: Connecting related information and concepts
-      • Relevance Filtering: Identifying the most pertinent information for specific needs
+      • Explaining HR and workplace policies in clear, friendly language
+      • Helping employees understand benefits, vacation rules, and code of conduct
+      • Pointing users to the right HR contacts or systems when needed
 
-      ⚠ **TERMINATION LOGIC**: 
-      Only terminate if the question is CLEARLY about finding specific people, personal contact information, or HR-related queries that are better handled by the people_lookup agent.
+      **Behavior Rules**
+      - If you are unsure of a specific policy detail, say so and recommend that the user check the official policy documents or contact HR.
+      - Do not invent or guarantee legal advice.
 
-      For any knowledge, research, documentation, or informational queries, ALWAYS provide a helpful response.
-
-      Guidelines for responses:
-      - Focus on finding the most relevant and accurate information
-      - Provide clear summaries with key points highlighted
-      - Include sources and references when possible
-      - Help users understand complex information through clear explanations
-      - Suggest additional related topics or resources for deeper learning
-      - Structure information in a logical, easy-to-digest format
-      - Only terminate when the question is specifically about finding people or contacts
-
-      Response Style:
-      - Well-organized with clear headings and bullet points
-      - Include actionable insights and takeaways
-      - Provide both high-level summaries and detailed explanations as needed
-      - Reference credible sources and suggest further reading
-      - Always try to provide value even if exact information isn't available
+      **Termination Logic**
+      - Only terminate when the user asks about topics completely unrelated to HR, policies, benefits, or workplace questions.
+      - In that case, respond exactly with:
+        TERMINATED - This request is outside the Bedrock HR agent's scope.
     metadata:
-      description: "Microsoft Agent Framework agent specialist at searching and retrieving relevant knowledge, documents, and information"
-      capabilities: ["document_search", "research_assistance", "information_organization", "context_provision", "relevance_filtering"]
+      description: "AWS Bedrock nova-pro HR/policy assistant for multi-agent collaboration"
+      capabilities: ["hr_policies", "benefits_explanation", "workplace_guidance"]
     framework_config:
-      provider: "azure_foundry"
-      agent_id: "${KNOWLEDGE_AGENT_ID}"
-      project_endpoint: "${PROJECT_ENDPOINT}"
+      provider: "aws_bedrock"
+      model_id: "amazon.nova-pro-v1:0"
+
+  openai_agent:
+    type: "openai"
+    enabled: true
+    instructions: |
+      You are a helpful general-purpose assistant running on OpenAI's GPT-4.1 model (non-Azure).
+      You specialize in software development, architecture, debugging, and technical explanation.
+
+      Behaviors:
+      - Provide clear, correct, and concise answers to coding and architectural questions.
+      - When showing code, favor minimal, focused examples.
+      - If additional context is needed, ask clarification questions instead of guessing.
+      - If a question is outside your domain, say so briefly instead of fabricating.
+    metadata:
+      description: "Direct OpenAI GPT-4.1 agent for general-purpose and development help"
+      capabilities: ["general_conversation", "coding_help", "analysis"]
+    framework_config:
+      provider: "openai"
+      model_id: "gpt-4.1"
 
 # Router configuration
 router:
@@ -174,19 +178,12 @@ router:
   
   # Routing patterns for pattern-based routing
   patterns:
-    people_lookup:
+    ms_foundry_people_agent:
       - "\\b(who is|find|lookup|contact)\\b.*\\b(person|employee|user|staff)\\b"
       - "\\b(manager|supervisor|lead|director|ceo|cto)\\b"
       - "\\bemail.*@\\b"
       - "\\bphone.*number\\b"
       - "\\b(team|department|organization|org chart)\\b"
-    
-    knowledge_finder:
-      - "\\b(how to|procedure|process|guide|documentation|docs)\\b"
-      - "\\b(policy|guideline|standard|requirement|compliance)\\b"
-      - "\\b(setup|configuration|install|deploy|implementation)\\b"
-      - "\\b(technical|api|integration)\\b"
-      - "\\b(manual|tutorial|instruction|walkthrough)\\b"
 
   # Agent Framework routing configuration
   agent_framework_routing:
@@ -234,15 +231,15 @@ group_chats:
       auto_select_speaker: true
       participants:
         - name: "GenericAgent"
-          instructions: "You are a helpful, knowledgeable, and versatile assistant. Provide general context and coordinate the discussion. Use the same instructions as the generic_agent."
+          instructions: "You are a helpful, knowledgeable, and versatile assistant. Provide general context and coordinate the discussion. Use the same instructions as the azure_openai_agent."
           role: "facilitator"
           priority: 3
         - name: "PeopleLookup"
-          instructions: "You are a People Lookup Agent. Focus on finding information about people, contacts, and team members. Use the same instructions as the people_lookup agent."
+          instructions: "You are a People Lookup Agent. Focus on finding information about people, contacts, and team members. Use the same instructions as the ms_foundry_people_agent agent."
           role: "participant"
           priority: 2
-        - name: "KnowledgeFinder"
-          instructions: "You are a Knowledge Finder Agent. Focus on searching documentation, policies, and knowledge bases. Use the same instructions as the knowledge_finder agent."
+        - name: "BedrockAgent"
+          instructions: "You are an HR and policy assistant running on AWS Bedrock. Use the same instructions as the bedrock_agent."
           role: "participant"
           priority: 2
 
@@ -253,25 +250,14 @@ group_chats:
       auto_select_speaker: true
       participants:
         - name: "PeopleLookup"
-          instructions: "You are a People Lookup Agent, leading this people-focused discussion. Use the same instructions as the people_lookup agent."
+          instructions: "You are a People Lookup Agent, leading this people-focused discussion. Use the same instructions as the ms_foundry_people_agent agent."
           role: "facilitator"
           priority: 3
         - name: "GenericAgent"
-          instructions: "You are a general assistant providing context and follow-up support for people-related discussions. Use the same instructions as the generic_agent."
+          instructions: "You are a general assistant providing context and follow-up support for people-related discussions. Use the same instructions as the azure_openai_agent."
           role: "participant"
           priority: 2
-
-    knowledge_research:
-      name: "Knowledge Research Session"
-      description: "Deep research and documentation analysis using Agent Framework"
-      max_turns: 5
-      auto_select_speaker: true
-      participants:
-        - name: "KnowledgeFinder"
-          instructions: "You are a Knowledge Finder Agent, leading this research-focused discussion. Use the same instructions as the knowledge_finder agent."
-          role: "facilitator"
-          priority: 3
-        - name: "GenericAgent"
-          instructions: "You are a general assistant providing synthesis and additional insights for knowledge-based discussions. Use the same instructions as the generic_agent."
+        - name: "BedrockAgent"
+          instructions: "You are an HR and policy assistant running on AWS Bedrock. Use the same instructions as the bedrock_agent."
           role: "participant"
           priority: 2

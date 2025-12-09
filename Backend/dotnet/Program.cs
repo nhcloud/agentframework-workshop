@@ -120,7 +120,6 @@ builder.Services.Configure<AzureAIConfig>(options =>
     
     var projectEndpoint = Environment.GetEnvironmentVariable("PROJECT_ENDPOINT");
     var peopleAgentId = Environment.GetEnvironmentVariable("PEOPLE_AGENT_ID");
-    var knowledgeAgentId = Environment.GetEnvironmentVariable("KNOWLEDGE_AGENT_ID");
 
     // ContentSafety
     var csEndpoint = Environment.GetEnvironmentVariable("CONTENT_SAFETY_ENDPOINT");
@@ -165,8 +164,7 @@ builder.Services.Configure<AzureAIConfig>(options =>
         {
             ProjectEndpoint = projectEndpoint,
             ManagedIdentityClientId = Environment.GetEnvironmentVariable("MANAGED_IDENTITY_CLIENT_ID"), // Add Managed Identity Client ID support
-            PeopleAgentId = peopleAgentId,
-            KnowledgeAgentId = knowledgeAgentId
+            PeopleAgentId = peopleAgentId
         };
     }
     else
@@ -284,4 +282,4 @@ app.Run();
 
 // Cleanup on shutdown
 tracerProvider?.Dispose();
-activitySource?.Dispose();
+activitySource?.Dispose();activitySource?.Dispose();
