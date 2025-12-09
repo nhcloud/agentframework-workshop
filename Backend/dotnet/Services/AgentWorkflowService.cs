@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using DotNetAgentFramework.Configuration;
 
 namespace DotNetAgentFramework.Services;

@@ -2,6 +2,8 @@ using OpenAI.Chat;
 using Azure.AI.Agents.Persistent;
 using Microsoft.Agents.AI;
 using System.Text.Json;
+using System.Diagnostics;
+using OpenTelemetry.Trace;
 
 namespace DotNetAgentFramework.Agents;
 
@@ -18,9 +20,10 @@ public interface IAgent
     Task InitializeAsync();
 }
 
-public abstract class BaseAgent(ILogger logger) : IAgent
+public abstract class BaseAgent(ILogger logger, ActivitySource? activitySource = null) : IAgent
 {
     protected readonly ILogger _logger = logger;
+    protected readonly ActivitySource? _activitySource = activitySource;
     protected ChatClient? _chatClient;
     protected Microsoft.Agents.AI.ChatClientAgent? _aiAgent;
     protected readonly Dictionary<string, JsonElement> _userMemoryState = new();
@@ -34,15 +37,22 @@ public abstract class BaseAgent(ILogger logger) : IAgent
 
     public virtual async Task InitializeAsync()
     {
+        using var activity = _activitySource?.StartActivity($"{Name}.Initialize", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("agent.type", GetType().Name);
+        
         try
         {
             // Initialize will be handled by derived classes
             _logger.LogDebug("Base initialization for agent {AgentName}", Name);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             await Task.CompletedTask;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize agent {AgentName}", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             throw;
         }
     }
@@ -54,6 +64,14 @@ public abstract class BaseAgent(ILogger logger) : IAgent
 
     public virtual async Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null)
     {
+        using var activity = _activitySource?.StartActivity($"{Name}.Respond", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("agent.type", GetType().Name);
+        activity?.SetTag("message.length", message.Length);
+        activity?.SetTag("has.context", !string.IsNullOrEmpty(context));
+        activity?.SetTag("has.history", conversationHistory?.Any() ?? false);
+        activity?.SetTag("history.count", conversationHistory?.Count ?? 0);
+        
         if (_chatClient == null)
         {
             await InitializeAsync();
@@ -61,6 +79,8 @@ public abstract class BaseAgent(ILogger logger) : IAgent
 
         try
         {
+            var startTime = DateTime.UtcNow;
+            
             // Create instructions with context
             var systemPrompt = Instructions;
             if (!string.IsNullOrEmpty(context))
@@ -94,17 +114,33 @@ public abstract class BaseAgent(ILogger logger) : IAgent
             messages.Add(new UserChatMessage(message));
 
             // Get response from chat client
+            string response;
             if (_chatClient != null)
             {
-                var response = await _chatClient.CompleteChatAsync(messages);
-                return response.Value.Content[0].Text ?? "I apologize, but I couldn't generate a response.";
+                var chatResponse = await _chatClient.CompleteChatAsync(messages);
+                response = chatResponse.Value.Content[0].Text ?? "I apologize, but I couldn't generate a response.";
+            }
+            else
+            {
+                response = "Agent not properly initialized.";
             }
 
-            return "Agent not properly initialized.";
+            var endTime = DateTime.UtcNow;
+            var duration = (endTime - startTime).TotalMilliseconds;
+            
+            activity?.SetTag("response.length", response.Length);
+            activity?.SetTag("processing.duration_ms", duration);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            
+            _logger.LogInformation("Agent {AgentName} responded in {Duration}ms", Name, duration);
+            
+            return response;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in {AgentName} responding to message", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             return $"I encountered an error while processing your request: {ex.Message}";
         }
     }
@@ -116,26 +152,45 @@ public abstract class BaseAgent(ILogger logger) : IAgent
 
     public virtual async Task<Models.ChatResponse> ChatWithHistoryAsync(ChatRequest request, List<GroupChatMessage>? conversationHistory = null)
     {
+        using var activity = _activitySource?.StartActivity($"{Name}.Chat", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("session.id", request.SessionId ?? "new");
+        activity?.SetTag("has.memory", request.EnableMemory ?? false);
+        
         var sessionId = request.SessionId ?? Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
 
-        var content = await RespondAsync(request.Message, conversationHistory, request.Context);
-        var endTime = DateTime.UtcNow;
-
-        return new Models.ChatResponse
+        try
         {
-            Content = content,
-            Agent = Name,
-            SessionId = sessionId,
-            Timestamp = endTime,
-            Usage = new UsageInfo
+            var content = await RespondAsync(request.Message, conversationHistory, request.Context);
+            var endTime = DateTime.UtcNow;
+            var processingTimeMs = (int)(endTime - startTime).TotalMilliseconds;
+
+            activity?.SetTag("processing.time_ms", processingTimeMs);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            return new Models.ChatResponse
             {
-                PromptTokens = EstimateTokens(request.Message),
-                CompletionTokens = EstimateTokens(content),
-                TotalTokens = EstimateTokens(request.Message) + EstimateTokens(content)
-            },
-            ProcessingTimeMs = (int)(endTime - startTime).TotalMilliseconds
-        };
+                Content = content,
+                Agent = Name,
+                SessionId = sessionId,
+                Timestamp = endTime,
+                Usage = new UsageInfo
+                {
+                    PromptTokens = EstimateTokens(request.Message),
+                    CompletionTokens = EstimateTokens(content),
+                    TotalTokens = EstimateTokens(request.Message) + EstimateTokens(content)
+                },
+                ProcessingTimeMs = processingTimeMs
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in {AgentName} chat", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
+            throw;
+        }
     }
 
     protected virtual int EstimateTokens(string text)
@@ -161,7 +216,8 @@ public class AzureOpenAIAgent(
     string endpoint,
     Azure.Core.TokenCredential? credential,
     ILogger<AzureOpenAIAgent> logger,
-    bool enableLongRunningMemory = false) : BaseAgent(logger)
+    bool enableLongRunningMemory = false,
+    ActivitySource? activitySource = null) : BaseAgent(logger, activitySource)
 {
     private readonly string _modelDeployment = modelDeployment;
     private readonly string _endpoint = endpoint;
@@ -173,6 +229,11 @@ public class AzureOpenAIAgent(
 
     public override async Task InitializeAsync()
     {
+        using var activity = _activitySource?.StartActivity($"AzureOpenAIAgent.Initialize", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("model.deployment", _modelDeployment);
+        activity?.SetTag("memory.enabled", enableLongRunningMemory);
+        
         try
         {
             // Set the memory flag from constructor parameter
@@ -205,17 +266,25 @@ public class AzureOpenAIAgent(
 
             _logger.LogInformation("Initialized Azure OpenAI agent {AgentName} with model {Model} (Memory: {MemoryEnabled})", 
                 Name, _modelDeployment, EnableLongRunningMemory);
+            
+            activity?.SetStatus(ActivityStatusCode.Ok);
             await Task.CompletedTask;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize Azure OpenAI agent {AgentName}", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             throw;
         }
     }
 
     public override async Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null)
     {
+        using var activity = _activitySource?.StartActivity($"AzureOpenAIAgent.Respond", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("memory.enabled", EnableLongRunningMemory);
+        
         // Ensure agent is initialized
         if (_chatClient == null && _aiAgent == null)
         {
@@ -231,17 +300,24 @@ public class AzureOpenAIAgent(
             }
             
             // Standard response without memory
-            return await base.RespondAsync(message, conversationHistory, context);
+            var response = await base.RespondAsync(message, conversationHistory, context);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            return response;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in {AgentName} responding to message", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             return $"I encountered an error while processing your request: {ex.Message}";
         }
     }
 
     private async Task<string> RespondWithMemoryAsync(string message, List<GroupChatMessage>? conversationHistory, string? context)
     {
+        using var activity = _activitySource?.StartActivity($"AzureOpenAIAgent.RespondWithMemory", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        
         if (_aiAgent == null)
         {
             throw new InvalidOperationException("AIAgent not initialized for memory support");
@@ -290,12 +366,15 @@ public class AzureOpenAIAgent(
             var responseText = result?.ToString() ?? "I apologize, but I couldn't generate a response.";
             
             _logger.LogDebug("Response generated with memory context: {ResponseLength} characters", responseText.Length);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             
             return responseText;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing message with memory for agent {AgentName}", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             throw;
         }
     }
@@ -323,7 +402,8 @@ public class AzureAIFoundryAgent(
     string modelDeployment,
     Azure.Core.TokenCredential? credential,
     ILogger<AzureAIFoundryAgent> logger,
-    string? managedIdentityClientId = null) : BaseAgent(logger)
+    string? managedIdentityClientId = null,
+    ActivitySource? activitySource = null) : BaseAgent(logger, activitySource)
 {
     private readonly string _agentId = agentId;
     private readonly string _projectEndpoint = projectEndpoint;
@@ -340,6 +420,11 @@ public class AzureAIFoundryAgent(
 
     public override async Task InitializeAsync()
     {
+        using var activity = _activitySource?.StartActivity($"AzureAIFoundryAgent.Initialize", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("agent.id", _agentId);
+        activity?.SetTag("project.endpoint", _projectEndpoint);
+        
         try
         {
             _logger.LogInformation("Initializing Azure AI Foundry agent {AgentId} for endpoint: {Endpoint}", _agentId, _projectEndpoint);
@@ -351,17 +436,24 @@ public class AzureAIFoundryAgent(
             _foundryAgent = _azureAgentClient.AsIChatClient(_agentId).CreateAIAgent();
 
             _logger.LogInformation("Initialized Azure AI Foundry agent {AgentName} with ID {AgentId}", Name, _foundryAgent.Id);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             await Task.CompletedTask;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize Azure AI Foundry agent {AgentName}", Name);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             throw;
         }
     }
 
     public override async Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null)
     {
+        using var activity = _activitySource?.StartActivity($"AzureAIFoundryAgent.Respond", ActivityKind.Internal);
+        activity?.SetTag("agent.name", Name);
+        activity?.SetTag("agent.id", _agentId);
+        
         // Ensure agent is initialized
         if (_foundryAgent == null || _azureAgentClient == null)
         {
@@ -399,11 +491,16 @@ public class AzureAIFoundryAgent(
             _logger.LogInformation("Azure AI Foundry agent {AgentId} generated response: {ResponseLength} characters",
                 _foundryAgent.Id, responseText.Length);
 
+            activity?.SetTag("response.length", responseText.Length);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            
             return responseText;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing with Azure AI Foundry agent {AgentId}", _foundryAgent?.Id);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.RecordException(ex);
             throw;
         }
     }

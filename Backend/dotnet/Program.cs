@@ -2,11 +2,56 @@ using Swashbuckle.AspNetCore.SwaggerUI;
 using DotNetEnv;
 using DotNetAgentFramework.Configuration;
 using DotNetAgentFramework.Services;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Resources;
+using Azure.Monitor.OpenTelemetry.Exporter;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Load environment variables from .env file
 Env.Load();
+
+// Configure OpenTelemetry and Application Insights
+var applicationInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
+var serviceName = "DotNetAgentFramework";
+var sourceName = Guid.NewGuid().ToString("N");
+
+// Create ActivitySource for tracing
+var activitySource = new ActivitySource(sourceName, "1.0.0");
+
+// Configure OpenTelemetry
+var tracerProviderBuilder = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
+    .AddSource(sourceName)
+    .AddSource("DotNetAgentFramework.*") // Add sources for all agent framework activities
+    .AddHttpClientInstrumentation() // Track HTTP calls
+    .AddAspNetCoreInstrumentation() // Track ASP.NET Core requests
+    .AddConsoleExporter(); // Always export to console for debugging
+
+// Add Azure Monitor exporter if connection string is provided
+if (!string.IsNullOrWhiteSpace(applicationInsightsConnectionString))
+{
+    tracerProviderBuilder.AddAzureMonitorTraceExporter(o => 
+    {
+        o.ConnectionString = applicationInsightsConnectionString;
+    });
+    
+    builder.Logging.AddApplicationInsights(configureTelemetryConfiguration: (config) =>
+        config.ConnectionString = applicationInsightsConnectionString,
+        configureApplicationInsightsLoggerOptions: (options) => { });
+    
+    Console.WriteLine($"? Application Insights enabled: {applicationInsightsConnectionString.Substring(0, Math.Min(50, applicationInsightsConnectionString.Length))}...");
+}
+else
+{
+    Console.WriteLine("??  Application Insights not configured. Set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry.");
+}
+
+var tracerProvider = tracerProviderBuilder.Build();
+
+// Register ActivitySource as singleton for dependency injection
+builder.Services.AddSingleton(activitySource);
 
 // Add YAML configuration support
 builder.Configuration.AddYamlFile("config.yml", optional: true, reloadOnChange: true);
@@ -236,3 +281,7 @@ Console.WriteLine("?? Swagger UI available at: http://localhost:8000");
 Console.WriteLine("?? Health endpoint: http://localhost:8000/health");
 
 app.Run();
+
+// Cleanup on shutdown
+tracerProvider?.Dispose();
+activitySource?.Dispose();

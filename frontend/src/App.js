@@ -900,6 +900,9 @@ function App() {
   // Memory toggle state
   const [enableMemory, setEnableMemory] = useState(false);
   
+  // Streaming toggle state
+  const [enableStreaming, setEnableStreaming] = useState(true); // Default to streaming enabled
+  
   // Voice state
   const [isVoiceInputEnabled, setIsVoiceInputEnabled] = useState(false);
   const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(false);
@@ -1065,7 +1068,8 @@ function App() {
           agentIds.length > 0 ? agentIds : null,
           selectedAgents.length > 1 ? maxTurns : null,
           selectedAgents.length > 1 ? responseFormat : null,
-          enableMemory
+          enableMemory,
+          enableStreaming  // Pass streaming flag
         );
       }
 
@@ -1263,6 +1267,32 @@ function App() {
                     borderLeft: `3px solid ${theme.colors.primary}`
                   }}>
                     💡 Agent will remember your name and preferences across messages
+                  </div>
+                )}
+                
+                {/* Streaming Toggle */}
+                <VoiceToggle style={{ marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>{enableStreaming ? '⚡' : '📦'}</span>
+                    <span>Streaming Mode</span>
+                  </div>
+                  <ToggleSwitch
+                    active={enableStreaming}
+                    onClick={() => setEnableStreaming(!enableStreaming)}
+                    whileTap={{ scale: 0.95 }}
+                  />
+                </VoiceToggle>
+                {enableStreaming && (
+                  <div style={{ 
+                    fontSize: '12px', 
+                    color: theme.colors.textSecondary, 
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    background: theme.colors.backgroundAlt,
+                    borderRadius: theme.borderRadius.sm,
+                    borderLeft: `3px solid ${theme.colors.secondary}`
+                  }}>
+                    ⚡ Receive responses in real-time as they're generated
                   </div>
                 )}
                 

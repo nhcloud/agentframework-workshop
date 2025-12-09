@@ -24,6 +24,7 @@ load_dotenv(env_path)
 from routers import chat, agents, safety
 from core.config import settings
 from core.logging_config import setup_logging
+from core.observability import initialize_observability, get_observability_manager
 from services.agent_service import AgentService
 from services.session_manager import SessionManager
 from services.workflow_orchestration_service import WorkflowOrchestrationService
@@ -38,6 +39,17 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     logger.info("Starting Agent Framework application...")
+    
+    # Initialize observability with Application Insights
+    app_insights_connection = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+    observability_initialized = initialize_observability(app_insights_connection)
+    
+    if observability_initialized:
+        logger.info("? Observability initialized successfully")
+        # Instrument FastAPI for automatic tracing
+        get_observability_manager().instrument_fastapi(app)
+    else:
+        logger.warning("??  Observability not initialized - telemetry will be limited")
     
     # Initialize services
     session_manager = SessionManager()
@@ -54,14 +66,18 @@ async def lifespan(app: FastAPI):
     app.state.agent_service = agent_service  
     app.state.workflow_service = workflow_service
     app.state.content_safety_service = content_safety_service
+    app.state.observability_manager = get_observability_manager()
     
     logger.info("Agent Framework application started successfully")
     logger.info(f"Content Safety: {'Enabled' if content_safety_service.enabled else 'Disabled'}")
     yield
     
     logger.info("Shutting down Agent Framework application...")
-    # Cleanup services if needed
+    # Cleanup services
     await session_manager.cleanup()
+    
+    # Shutdown observability
+    get_observability_manager().shutdown()
 
 
 # Create FastAPI app
