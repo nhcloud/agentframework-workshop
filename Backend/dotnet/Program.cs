@@ -250,7 +250,7 @@ builder.Services.AddScoped<IGroupChatTemplateService, GroupChatTemplateService>(
 builder.Services.AddScoped<IResponseFormatterService, ResponseFormatterService>();
 
 // Add logging - moved AFTER Application Insights configuration
-builder.Logging.ClearProviders();
+// Application Insights logging provider already configured above - do not clear!
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
@@ -307,3 +307,4 @@ app.Run();
 // Cleanup on shutdown
 tracerProvider?.Dispose();
 activitySource?.Dispose();
+
