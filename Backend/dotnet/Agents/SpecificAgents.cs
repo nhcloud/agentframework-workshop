@@ -1,11 +1,10 @@
 using Azure.AI.Agents.Persistent;
 using DotNetAgentFramework.Configuration;
 using DotNetAgentFramework.Services;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
-using System.Text.Json;
-using System.Diagnostics;
 using OpenTelemetry.Trace;
+using System.ClientModel;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace DotNetAgentFramework.Agents;
 
@@ -22,30 +21,30 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
 
     public override string Name => "people_lookup";
     public override string Description => _instructionsService.GetDescription("people_lookup");
-    
+
     public override string Instructions => _instructionsService.GetInstructions("people_lookup");
 
     public override async Task InitializeAsync()
     {
         using var activity = _activitySource?.StartActivity("PeopleLookupAgent.Initialize", ActivityKind.Internal);
         activity?.SetTag("agent.name", Name);
-        
+
         await base.InitializeAsync();
 
         try
         {
             // Try Azure AI Foundry first if configured
-            if (_azureConfig?.AzureAIFoundry?.IsConfigured() == true && 
+            if (_azureConfig?.AzureAIFoundry?.IsConfigured() == true &&
                 !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.PeopleAgentId))
             {
                 await InitializeAzureFoundryAgentAsync();
                 activity?.SetStatus(ActivityStatusCode.Ok);
                 return;
             }
-
-            // Fallback to Azure OpenAI
-            await InitializeAzureOpenAIAgentAsync();
-            activity?.SetStatus(ActivityStatusCode.Ok);
+            else
+            {
+                throw new Exception("Azure AI Foundry Agent is not configured.");
+            }
         }
         catch (Exception ex)
         {
@@ -79,30 +78,9 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
         _azureAgentClient = new PersistentAgentsClient(projectEndpoint, credential);
 
         // Get the AI agent using the sample pattern
-        _agent =  _azureAgentClient.AsIChatClient(agentId).CreateAIAgent();
+        _agent = _azureAgentClient.AsIChatClient(agentId).CreateAIAgent();
 
         _logger.LogInformation("Initialized People Lookup Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
-    }
-
-    private Task InitializeAzureOpenAIAgentAsync()
-    {
-        // Get Azure OpenAI configuration
-        var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT") ?? _azureConfig?.AzureOpenAI?.Endpoint;
-        var apiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY") ?? _azureConfig?.AzureOpenAI?.ApiKey;
-        var deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? _azureConfig?.AzureOpenAI?.DeploymentName ?? "gpt-4o";
-
-        if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Azure OpenAI endpoint and API key are required for People Lookup Agent");
-        }
-
-        // Create Azure OpenAI client and get chat client following the new pattern
-        var azureClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential());
-        _agent = azureClient.GetChatClient(deploymentName)
-            .CreateAIAgent(name: "PeopleLookup", instructions: Instructions);
-        
-        _logger.LogInformation("Initialized People Lookup Agent with Azure OpenAI deployment: {DeploymentName}", deploymentName);
-        return Task.CompletedTask;
     }
 
     public override async Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null)
@@ -110,7 +88,7 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
         using var activity = _activitySource?.StartActivity("PeopleLookupAgent.Respond", ActivityKind.Internal);
         activity?.SetTag("agent.name", Name);
         activity?.SetTag("message.length", message.Length);
-        
+
         // Ensure agent is initialized
         if (_agent == null)
         {
@@ -142,12 +120,12 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
             // Run the agent following the sample pattern
             var result = await _agent.RunAsync(enhancedMessage, thread, agentOptions);
             var responseText = result?.ToString() ?? "I apologize, but I couldn't generate a response from the People Lookup Agent.";
-            
+
             _logger.LogInformation("People Lookup Agent generated response: {ResponseLength} characters", responseText.Length);
-            
+
             activity?.SetTag("response.length", responseText.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
-            
+
             return responseText;
         }
         catch (Exception ex)
@@ -201,7 +179,7 @@ public class PeopleLookupAgent(ILogger logger, AgentInstructionsService instruct
                 }
             }
         }
-        
+
         _threadCache.Clear();
     }
 }
@@ -219,30 +197,30 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
 
     public override string Name => "knowledge_finder";
     public override string Description => _instructionsService.GetDescription("knowledge_finder");
-    
+
     public override string Instructions => _instructionsService.GetInstructions("knowledge_finder");
 
     public override async Task InitializeAsync()
     {
         using var activity = _activitySource?.StartActivity("KnowledgeFinderAgent.Initialize", ActivityKind.Internal);
         activity?.SetTag("agent.name", Name);
-        
+
         await base.InitializeAsync();
 
         try
         {
             // Try Azure AI Foundry first if configured
-            if (_azureConfig?.AzureAIFoundry?.IsConfigured() == true && 
+            if (_azureConfig?.AzureAIFoundry?.IsConfigured() == true &&
                 !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.KnowledgeAgentId))
             {
                 await InitializeAzureFoundryAgentAsync();
                 activity?.SetStatus(ActivityStatusCode.Ok);
                 return;
             }
-
-            // Fallback to Azure OpenAI
-            await InitializeAzureOpenAIAgentAsync();
-            activity?.SetStatus(ActivityStatusCode.Ok);
+            else
+            {
+                throw new Exception("Azure AI Foundry Agent is not configured.");
+            }
         }
         catch (Exception ex)
         {
@@ -281,33 +259,13 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
         _logger.LogInformation("Initialized Knowledge Finder Agent with Azure AI Foundry agent: {AgentName}", _agent.Id);
     }
 
-    private Task InitializeAzureOpenAIAgentAsync()
-    {
-        // Get Azure OpenAI configuration
-        var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT") ?? _azureConfig?.AzureOpenAI?.Endpoint;
-        var apiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY") ?? _azureConfig?.AzureOpenAI?.ApiKey;
-        var deploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? _azureConfig?.AzureOpenAI?.DeploymentName ?? "gpt-4o";
-
-        if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("Azure OpenAI endpoint and API key are required for Knowledge Finder Agent");
-        }
-
-        // Create Azure OpenAI client and get chat client following the new pattern
-        var azureClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential());
-        _agent = azureClient.GetChatClient(deploymentName)
-            .CreateAIAgent(name: "KnowledgeFinder", instructions: Instructions);
-        
-        _logger.LogInformation("Initialized Knowledge Finder Agent with Azure OpenAI deployment: {DeploymentName}", deploymentName);
-        return Task.CompletedTask;
-    }
 
     public override async Task<string> RespondAsync(string message, List<GroupChatMessage>? conversationHistory = null, string? context = null)
     {
         using var activity = _activitySource?.StartActivity("KnowledgeFinderAgent.Respond", ActivityKind.Internal);
         activity?.SetTag("agent.name", Name);
         activity?.SetTag("message.length", message.Length);
-        
+
         // Ensure agent is initialized
         if (_agent == null)
         {
@@ -339,12 +297,12 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
             // Run the agent following the sample pattern
             var result = await _agent.RunAsync(enhancedMessage, thread, agentOptions);
             var responseText = result?.ToString() ?? "I apologize, but I couldn't generate a response from the Knowledge Finder Agent.";
-            
+
             _logger.LogInformation("Knowledge Finder Agent generated response: {ResponseLength} characters", responseText.Length);
-            
+
             activity?.SetTag("response.length", responseText.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
-            
+
             return responseText;
         }
         catch (Exception ex)
@@ -398,7 +356,7 @@ public class KnowledgeFinderAgent(ILogger logger, AgentInstructionsService instr
                 }
             }
         }
-        
+
         _threadCache.Clear();
     }
 }
@@ -416,7 +374,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
 
     public override string Name => "generic_agent";
     public override string Description => _instructionsService.GetDescription("generic_agent");
-    
+
     public override string Instructions => _instructionsService.GetInstructions("generic_agent");
 
     public override async Task InitializeAsync()
@@ -424,7 +382,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
         using var activity = _activitySource?.StartActivity("GenericAgent.Initialize", ActivityKind.Internal);
         activity?.SetTag("agent.name", Name);
         activity?.SetTag("memory.enabled", enableMemory);
-        
+
         await base.InitializeAsync();
 
         // Set memory flag from constructor
@@ -458,7 +416,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
         }
 
         // Create Azure OpenAI client and get chat client following the new pattern
-        var azureClient = new AzureOpenAIClient(new Uri(endpoint), new AzureCliCredential());
+        var azureClient = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey));
         var chatClient = azureClient.GetChatClient(deploymentName);
         var iChatClient = chatClient.AsIChatClient();
 
@@ -466,7 +424,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
         if (EnableLongRunningMemory)
         {
             _logger.LogInformation("Initializing Generic Agent with UserInfoMemory for long-running memory support");
-            
+
             // Create AIAgent with UserInfoMemory context provider using ChatClientAgentOptions
             var agentOptions = new Microsoft.Agents.AI.ChatClientAgentOptions
             {
@@ -476,18 +434,18 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
                     ctx.SerializedState,
                     ctx.JsonSerializerOptions)
             };
-            
+
             _agent = iChatClient.CreateAIAgent(agentOptions);
         }
         else
         {
             _logger.LogInformation("Initializing Generic Agent without memory");
-            
+
             // Standard agent without memory - using simple overload
             _agent = iChatClient.CreateAIAgent(instructions: Instructions);
         }
-        
-        _logger.LogInformation("Initialized Generic Agent with Azure OpenAI deployment: {DeploymentName} (Memory: {MemoryEnabled})", 
+
+        _logger.LogInformation("Initialized Generic Agent with Azure OpenAI deployment: {DeploymentName} (Memory: {MemoryEnabled})",
             deploymentName, EnableLongRunningMemory);
         return Task.CompletedTask;
     }
@@ -498,7 +456,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
         activity?.SetTag("agent.name", Name);
         activity?.SetTag("memory.enabled", EnableLongRunningMemory);
         activity?.SetTag("message.length", message.Length);
-        
+
         // Ensure agent is initialized
         if (_agent == null)
         {
@@ -531,12 +489,12 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
             // Run the agent following the sample pattern
             var result = await _agent.RunAsync(enhancedMessage, thread, agentOptions);
             var responseText = result?.ToString() ?? "I apologize, but I couldn't generate a response from the Generic Agent.";
-            
+
             _logger.LogInformation("Generic Agent generated response: {ResponseLength} characters", responseText.Length);
-            
+
             activity?.SetTag("response.length", responseText.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
-            
+
             return responseText;
         }
         catch (Exception ex)
@@ -574,7 +532,7 @@ public class GenericAgent(ILogger logger, AgentInstructionsService instructionsS
         // Clean up threads - simplified for Azure OpenAI only
         _threadCache.Clear();
         _memoryStates.Clear();
-        
+
         _logger.LogDebug("Generic Agent cleanup completed");
     }
 }

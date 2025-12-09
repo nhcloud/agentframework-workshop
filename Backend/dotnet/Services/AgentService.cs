@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Options;
 using DotNetAgentFramework.Configuration;
 using DotNetAgentFramework.Agents;
+using System.Diagnostics;
 
 namespace DotNetAgentFramework.Services;
 
@@ -52,6 +52,7 @@ public class AgentService : IAgentService
     {
         var logger = _serviceProvider.GetRequiredService<ILogger<T>>();
         var instructionsService = _serviceProvider.GetRequiredService<AgentInstructionsService>();
+        var activitySource = _serviceProvider.GetService<ActivitySource>(); // Get ActivitySource from DI
         
         // Log memory setting for debugging
         _logger.LogDebug("Creating agent with memory setting: {MemoryEnabled}", enableMemory);
@@ -60,7 +61,11 @@ public class AgentService : IAgentService
         IAgent agent;
         if (typeof(T) == typeof(GenericAgent))
         {
-            agent = (T)Activator.CreateInstance(typeof(T), logger, instructionsService, _azureConfigOptions, enableMemory)!;
+            agent = (T)Activator.CreateInstance(typeof(T), logger, instructionsService, _azureConfigOptions, enableMemory, activitySource)!;
+        }
+        else if (typeof(T) == typeof(PeopleLookupAgent) || typeof(T) == typeof(KnowledgeFinderAgent))
+        {
+            agent = (T)Activator.CreateInstance(typeof(T), logger, instructionsService, _azureConfigOptions, activitySource)!;
         }
         else
         {
@@ -101,6 +106,7 @@ public class AgentService : IAgentService
             _logger.LogInformation("Creating new Azure AI Foundry agent: {AgentType}", agentType);
             
             var logger = _serviceProvider.GetRequiredService<ILogger<AzureAIFoundryAgent>>();
+            var activitySource = _serviceProvider.GetService<ActivitySource>(); // Get ActivitySource from DI
             
             var (agentId, description, instructions) = agentType.ToLowerInvariant() switch
             {
@@ -153,7 +159,8 @@ public class AgentService : IAgentService
                 modelDeployment: deploymentName,
                 credential: credential,
                 logger: logger,
-                managedIdentityClientId: _azureConfig.AzureAIFoundry.ManagedIdentityClientId
+                managedIdentityClientId: _azureConfig.AzureAIFoundry.ManagedIdentityClientId,
+                activitySource: activitySource
             );
 
             await foundryAgent.InitializeAsync();

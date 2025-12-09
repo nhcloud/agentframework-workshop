@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Options;
 using DotNetAgentFramework.Configuration;
 
 namespace DotNetAgentFramework.Services;

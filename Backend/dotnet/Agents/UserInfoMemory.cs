@@ -1,7 +1,6 @@
 ﻿using Microsoft.Agents.AI;
 using System.Text;
 using System.Text.Json;
-using static Microsoft.Agents.AI.AIContextProvider;
 
 namespace DotNetAgentFramework.Agents;
 
