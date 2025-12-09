@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Load environment variables from .env file
 Env.Load();
 
-// Configure OpenTelemetry and Application Insights
+// Configure Application Insights and OpenTelemetry
 var applicationInsightsConnectionString = Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
 var serviceName = "DotNetAgentFramework";
 var sourceName = Guid.NewGuid().ToString("N");
@@ -20,7 +20,41 @@ var sourceName = Guid.NewGuid().ToString("N");
 // Create ActivitySource for tracing
 var activitySource = new ActivitySource(sourceName, "1.0.0");
 
-// Configure OpenTelemetry
+// Configure Application Insights Telemetry
+if (!string.IsNullOrWhiteSpace(applicationInsightsConnectionString))
+{
+    // Add Application Insights telemetry - this enables full telemetry collection
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+    {
+        options.ConnectionString = applicationInsightsConnectionString;
+        options.EnableAdaptiveSampling = true;
+        options.EnableQuickPulseMetricStream = true;
+        options.EnableDependencyTrackingTelemetryModule = true;
+        options.EnableRequestTrackingTelemetryModule = true;
+    });
+
+    // Configure logging to include Application Insights
+    builder.Logging.AddApplicationInsights(
+        configureTelemetryConfiguration: (config) => config.ConnectionString = applicationInsightsConnectionString,
+        configureApplicationInsightsLoggerOptions: (options) => 
+        {
+            // Capture all log levels including Information and above
+            options.IncludeScopes = true;
+            options.TrackExceptionsAsExceptionTelemetry = true;
+        });
+
+    // Set minimum log level for Application Insights
+    builder.Logging.AddFilter<Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider>("", LogLevel.Information);
+    
+    Console.WriteLine($"? Application Insights enabled: {applicationInsightsConnectionString.Substring(0, Math.Min(50, applicationInsightsConnectionString.Length))}...");
+    Console.WriteLine($"?? Telemetry and logging will be sent to Application Insights");
+}
+else
+{
+    Console.WriteLine("??  Application Insights not configured. Set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry.");
+}
+
+// Configure OpenTelemetry for distributed tracing
 var tracerProviderBuilder = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
     .AddSource(sourceName)
@@ -29,23 +63,13 @@ var tracerProviderBuilder = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
     .AddAspNetCoreInstrumentation() // Track ASP.NET Core requests
     .AddConsoleExporter(); // Always export to console for debugging
 
-// Add Azure Monitor exporter if connection string is provided
+// Add Azure Monitor trace exporter if connection string is provided
 if (!string.IsNullOrWhiteSpace(applicationInsightsConnectionString))
 {
     tracerProviderBuilder.AddAzureMonitorTraceExporter(o => 
     {
         o.ConnectionString = applicationInsightsConnectionString;
     });
-    
-    builder.Logging.AddApplicationInsights(configureTelemetryConfiguration: (config) =>
-        config.ConnectionString = applicationInsightsConnectionString,
-        configureApplicationInsightsLoggerOptions: (options) => { });
-    
-    Console.WriteLine($"? Application Insights enabled: {applicationInsightsConnectionString.Substring(0, Math.Min(50, applicationInsightsConnectionString.Length))}...");
-}
-else
-{
-    Console.WriteLine("??  Application Insights not configured. Set APPLICATIONINSIGHTS_CONNECTION_STRING to enable telemetry.");
 }
 
 var tracerProvider = tracerProviderBuilder.Build();
@@ -163,7 +187,7 @@ builder.Services.Configure<AzureAIConfig>(options =>
         options.AzureAIFoundry = new AzureAIFoundryConfig
         {
             ProjectEndpoint = projectEndpoint,
-            ManagedIdentityClientId = Environment.GetEnvironmentVariable("MANAGED_IDENTITY_CLIENT_ID"), // Add Managed Identity Client ID support
+            ManagedIdentityClientId = Environment.GetEnvironmentVariable("MANAGED_IDENTITY_CLIENT_ID"),
             AgentId = peopleAgentId
         };
     }
@@ -225,7 +249,7 @@ builder.Services.AddSingleton<ISessionManager, SessionManager>();
 builder.Services.AddScoped<IGroupChatTemplateService, GroupChatTemplateService>();
 builder.Services.AddScoped<IResponseFormatterService, ResponseFormatterService>();
 
-// Add logging
+// Add logging - moved AFTER Application Insights configuration
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -276,10 +300,10 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
 // Start the application and keep it running
 Console.WriteLine("?? Starting .NET Agent Framework API...");
 Console.WriteLine("?? Swagger UI available at: http://localhost:8000");
-Console.WriteLine("?? Health endpoint: http://localhost:8000/health");
+Console.WriteLine("??  Health endpoint: http://localhost:8000/health");
 
 app.Run();
 
 // Cleanup on shutdown
 tracerProvider?.Dispose();
-activitySource?.Dispose();activitySource?.Dispose();
+activitySource?.Dispose();
