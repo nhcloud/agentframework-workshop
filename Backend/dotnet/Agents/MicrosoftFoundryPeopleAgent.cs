@@ -33,7 +33,7 @@ public class MicrosoftFoundryPeopleAgent(ILogger logger, AgentInstructionsServic
         {
             // Try Azure AI Foundry first if configured
             if (_azureConfig?.AzureAIFoundry?.IsConfigured() == true &&
-                !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.PeopleAgentId))
+                !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.AgentId))
             {
                 await InitializeAzureFoundryAgentAsync();
                 activity?.SetStatus(ActivityStatusCode.Ok);
@@ -56,7 +56,7 @@ public class MicrosoftFoundryPeopleAgent(ILogger logger, AgentInstructionsServic
     private async Task InitializeAzureFoundryAgentAsync()
     {
         var projectEndpoint = _azureConfig?.AzureAIFoundry?.ProjectEndpoint;
-        var agentId = _azureConfig?.AzureAIFoundry?.PeopleAgentId;
+        var agentId = _azureConfig?.AzureAIFoundry?.AgentId;
         var managedIdentityClientId = _azureConfig?.AzureAIFoundry?.ManagedIdentityClientId;
 
         if (string.IsNullOrEmpty(projectEndpoint) || string.IsNullOrEmpty(agentId))

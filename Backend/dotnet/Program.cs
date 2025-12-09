@@ -118,8 +118,8 @@ builder.Services.Configure<AzureAIConfig>(options =>
     var azureOpenAIDeployment = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME");
     var azureOpenAIApiVersion = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_VERSION");
     
-    var projectEndpoint = Environment.GetEnvironmentVariable("PROJECT_ENDPOINT");
-    var peopleAgentId = Environment.GetEnvironmentVariable("PEOPLE_AGENT_ID");
+    var projectEndpoint = Environment.GetEnvironmentVariable("MS_FOUNDRY_PROJECT_ENDPOINT");
+    var peopleAgentId = Environment.GetEnvironmentVariable("MS_FOUNDRY_AGENT_ID");
 
     // ContentSafety
     var csEndpoint = Environment.GetEnvironmentVariable("CONTENT_SAFETY_ENDPOINT");
@@ -164,7 +164,7 @@ builder.Services.Configure<AzureAIConfig>(options =>
         {
             ProjectEndpoint = projectEndpoint,
             ManagedIdentityClientId = Environment.GetEnvironmentVariable("MANAGED_IDENTITY_CLIENT_ID"), // Add Managed Identity Client ID support
-            PeopleAgentId = peopleAgentId
+            AgentId = peopleAgentId
         };
     }
     else

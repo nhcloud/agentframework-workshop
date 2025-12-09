@@ -121,7 +121,7 @@ public class AgentService : IAgentService
             var (agentId, description, instructions) = agentType.ToLowerInvariant() switch
             {
                 "ms_foundry_people_agent" => (
-                    _azureConfig.AzureAIFoundry.PeopleAgentId ?? "people-agent",
+                    _azureConfig.AzureAIFoundry.AgentId ?? "people-agent",
                     "Azure AI Foundry People Lookup Agent with enterprise directory access",
                     "You are a specialized People Lookup agent running in Azure AI Foundry. You have access to enterprise people directory and contact information. Use your enterprise knowledge to help users find the right people for their needs."
                 ),
@@ -156,7 +156,7 @@ public class AgentService : IAgentService
             }
 
             var foundryAgent = new AzureAIFoundryAgent(
-                name: _azureConfig.AzureAIFoundry.PeopleAgentId,
+                name: _azureConfig.AzureAIFoundry.AgentId,
                 agentId: agentId,
                 projectEndpoint: _azureConfig.AzureAIFoundry.ProjectEndpoint,
                 description: description,
@@ -283,7 +283,7 @@ public class AgentService : IAgentService
             var foundryConfig = _azureConfig?.AzureAIFoundry;
             var hasAgentId = agentType switch
             {
-                "ms_foundry_people_agent" => !string.IsNullOrEmpty(foundryConfig?.PeopleAgentId),
+                "ms_foundry_people_agent" => !string.IsNullOrEmpty(foundryConfig?.AgentId),
                 _ => false
             };
 
@@ -396,7 +396,7 @@ public class AgentService : IAgentService
         // Check if Azure AI Foundry is configured
         var hasFoundryConfig = _azureConfig?.AzureAIFoundry != null &&
                               !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.ProjectEndpoint) &&
-                              !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.PeopleAgentId);
+                              !string.IsNullOrEmpty(_azureConfig.AzureAIFoundry.AgentId);
 
         if (!hasFoundryConfig)
         {
