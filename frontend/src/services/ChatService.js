@@ -63,56 +63,193 @@ class ChatService {
   /**
    * Send message to single agent or multiple agents
    */
-  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null, enableMemory = null) {
-    const controller = this.beginRequest();
+  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null, enableMemory = null, stream = true) {
+    // Handle single agent (backward compatibility)
+    if (typeof agents === 'string') {
+      agents = [agents];
+    }
+
+    const payload = {
+      message,
+      session_id: sessionId,
+      agents: agents, // Array of agent names or null for auto-routing
+      stream: stream  // Add streaming flag (default true)
+    };
+
+    // Add max_turns if provided
+    if (maxTurns !== null && maxTurns !== undefined) {
+      payload.max_turns = maxTurns;
+    }
+
+    // Add format if provided
+    if (format !== null && format !== undefined) {
+      payload.format = format;
+    }
+
+    // Add enable_memory if provided
+    if (enableMemory !== null && enableMemory !== undefined) {
+      payload.enable_memory = enableMemory;
+    }
+
+    // If streaming is disabled, use regular axios request
+    if (!stream) {
+      const controller = this.beginRequest();
+      try {
+        const response = await this.api.post('/chat', payload, { signal: controller.signal });
+
+        // Return full response data, including detailed format fields if present
+        return {
+          content: response.data.content,
+          agent: response.data.agent,
+          sessionId: response.data.session_id || response.data.conversation_id,
+          timestamp: response.data.timestamp || new Date().toISOString(),
+          metadata: response.data.metadata || {},
+          format: response.data.format,
+          // Detailed format fields
+          responses: response.data.responses, // Array of agent responses for detailed format
+          total_turns: response.data.total_turns,
+          conversation_id: response.data.conversation_id,
+          active_participants: response.data.active_participants
+        };
+      } catch (error) {
+        if (axios.isCancel?.(error) || error?.name === 'CanceledError' || error?.message === 'canceled') {
+          throw new Error('Request canceled');
+        }
+        throw new Error(error.response?.data?.detail || 'Failed to send message');
+      } finally {
+        this.currentController = null;
+      }
+    }
+
+    // Handle streaming with fetch API and SSE
     try {
-      // Handle single agent (backward compatibility)
-      if (typeof agents === 'string') {
-        agents = [agents];
+      const controller = this.beginRequest();
+      
+      const response = await fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(errorData.detail || 'Failed to send message');
       }
 
-      const payload = {
-        message,
-        session_id: sessionId,
-        agents: agents // Array of agent names or null for auto-routing
-      };
-
-      // Add max_turns if provided
-      if (maxTurns !== null && maxTurns !== undefined) {
-        payload.max_turns = maxTurns;
+      // Check if response is SSE
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('text/event-stream')) {
+        // Not SSE, parse as JSON
+        const data = await response.json();
+        return {
+          content: data.content,
+          agent: data.agent,
+          sessionId: data.session_id || data.conversation_id,
+          timestamp: data.timestamp || new Date().toISOString(),
+          metadata: data.metadata || {},
+          format: data.format,
+          responses: data.responses,
+          total_turns: data.total_turns,
+          conversation_id: data.conversation_id,
+          active_participants: data.active_participants
+        };
       }
 
-      // Add format if provided
-      if (format !== null && format !== undefined) {
-        payload.format = format;
+      // Parse SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      let sessionIdFromStream = null;
+      let chunks = [];
+      let completeData = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            const eventMatch = line.match(/event: (\w+)/);
+            const dataMatch = line.match(/data: (.+)/);
+            
+            if (eventMatch && dataMatch) {
+              const eventType = eventMatch[1];
+              const data = JSON.parse(dataMatch[1]);
+              
+              switch (eventType) {
+                case 'start':
+                  sessionIdFromStream = data.session_id;
+                  console.log('Stream started:', data);
+                  break;
+                  
+                case 'chunk':
+                  chunks.push(data);
+                  console.log('Received chunk:', data);
+                  break;
+                  
+                case 'complete':
+                  completeData = data;
+                  console.log('Stream complete:', data);
+                  break;
+                  
+                case 'error':
+                  throw new Error(data.detail || 'Stream error');
+              }
+            }
+          }
+        }
       }
 
-      // Add enable_memory if provided
-      if (enableMemory !== null && enableMemory !== undefined) {
-        payload.enable_memory = enableMemory;
+      // Return aggregated response
+      if (completeData) {
+        // Prefer actual chunk content over the complete event's summary
+        const actualContent = chunks.length > 0 
+          ? chunks.map(c => c.content).join('\n\n')  // Use chunk content
+          : completeData.content;  // Fallback to complete event content
+        
+        return {
+          content: actualContent,  // Use chunk content, not the workflow summary
+          agent: chunks[0]?.agent || 'assistant',
+          sessionId: sessionIdFromStream || completeData.session_id,
+          timestamp: new Date().toISOString(),
+          metadata: completeData.metadata || {},
+          format: format || 'user_friendly',
+          responses: completeData.responses || chunks,
+          total_turns: completeData.total_turns || chunks.length,
+          conversation_id: sessionIdFromStream,
+          active_participants: chunks.map(c => c.agent).filter((v, i, a) => a.indexOf(v) === i)
+        };
       }
 
-      const response = await this.api.post('/chat', payload, { signal: controller.signal });
-
-      // Return full response data, including detailed format fields if present
+      // Fallback if no complete event
       return {
-        content: response.data.content,
-        agent: response.data.agent,
-        sessionId: response.data.session_id || response.data.conversation_id,
-        timestamp: response.data.timestamp || new Date().toISOString(),
-        metadata: response.data.metadata || {},
-        format: response.data.format,
-        // Detailed format fields
-        responses: response.data.responses, // Array of agent responses for detailed format
-        total_turns: response.data.total_turns,
-        conversation_id: response.data.conversation_id,
-        active_participants: response.data.active_participants
+        content: chunks.map(c => c.content).join('\n\n'),  // Use chunk content
+        agent: chunks[0]?.agent || 'assistant',
+        sessionId: sessionIdFromStream,
+        timestamp: new Date().toISOString(),
+        metadata: {},
+        format: format || 'user_friendly',
+        responses: chunks,
+        total_turns: chunks.length,
+        conversation_id: sessionIdFromStream,
+        active_participants: chunks.map(c => c.agent).filter((v, i, a) => a.indexOf(v) === i)
       };
+
     } catch (error) {
-      if (axios.isCancel?.(error) || error?.name === 'CanceledError' || error?.message === 'canceled') {
+      if (error.name === 'AbortError') {
         throw new Error('Request canceled');
       }
-      throw new Error(error.response?.data?.detail || 'Failed to send message');
+      throw new Error(error.message || 'Failed to send message');
     } finally {
       this.currentController = null;
     }

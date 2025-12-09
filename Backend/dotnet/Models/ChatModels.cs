@@ -24,6 +24,9 @@ public class ChatRequest
     
     [JsonPropertyName("enable_memory")]
     public bool? EnableMemory { get; set; }
+    
+    [JsonPropertyName("stream")]
+    public bool Stream { get; set; } = true; // Default to streaming
 }
 
 public class ChatResponse
