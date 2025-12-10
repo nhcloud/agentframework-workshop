@@ -14,7 +14,7 @@ public class MicrosoftFoundryPeopleAgent(ILogger logger, AgentInstructionsServic
     private readonly AgentInstructionsService _instructionsService = instructionsService;
     private readonly AzureAIConfig? _azureConfig = azureConfig?.Value;
     private PersistentAgentsClient? _azureAgentClient;
-    private Microsoft.Agents.AI.ChatClientAgent? _agent;
+    private Microsoft.Agents.AI.AIAgent? _agent;
     private readonly Dictionary<string, Microsoft.Agents.AI.AgentThread> _threadCache = new();
 
     public override string Name => "ms_foundry_people_agent";

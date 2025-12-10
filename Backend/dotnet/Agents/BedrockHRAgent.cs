@@ -13,7 +13,7 @@ namespace DotNetAgentFramework.Agents;
 public class BedrockHRAgent(ILogger logger, AgentInstructionsService instructionsService, IOptions<AzureAIConfig>? azureConfig = null, ActivitySource? activitySource = null) : BaseAgent(logger, activitySource)
 {
     private readonly AgentInstructionsService _instructionsService = instructionsService;
-    private Microsoft.Agents.AI.ChatClientAgent? _agent;
+    private Microsoft.Agents.AI.AIAgent? _agent;
     private readonly Dictionary<string, Microsoft.Agents.AI.AgentThread> _threadCache = new();
 
     public override string Name => "bedrock_agent";
