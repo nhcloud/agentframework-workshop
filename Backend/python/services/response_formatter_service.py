@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from .agent_service import AgentService
+from .agent_service_new import AgentService
 from models.chat_models import GroupChatResponse, GroupChatMessage
 
 
@@ -49,16 +49,27 @@ class ResponseFormatterService:
         """
         try:
             if format_type == "detailed":
+                # Detailed format includes all response fields plus metadata
                 return {
-                    **response,
+                    "content": response.get("content", ""),
+                    "agent": response.get("agent", "unknown"),
+                    "session_id": response.get("session_id"),
+                    "timestamp": response.get("timestamp"),
+                    "processing_time_ms": response.get("processing_time_ms", 0),
+                    "usage": response.get("usage", {}),
                     "format": "detailed",
-                    "formatted_at": datetime.utcnow().isoformat()
+                    "formatted_at": datetime.utcnow().isoformat(),
+                    "metadata": {
+                        "response_type": "single_agent",
+                        "agent_count": 1
+                    }
                 }
             else:
                 # User-friendly format (default)
                 return {
                     "content": response.get("content", ""),
                     "agent": response.get("agent", "unknown"),
+                    "session_id": response.get("session_id"),
                     "timestamp": response.get("timestamp"),
                     "format": "user_friendly",
                     "formatted_at": datetime.utcnow().isoformat()
@@ -68,18 +79,22 @@ class ResponseFormatterService:
             logger.error(f"Failed to format single response: {str(e)}")
             return response
     
-    async def format_group_chat_response(self, group_response: GroupChatResponse, format_type: str = "user_friendly") -> Dict[str, Any]:
+    async def format_group_chat_response(self, group_response, format_type: str = "user_friendly") -> Dict[str, Any]:
         """
         Format a group chat response based on the requested format.
         
         Args:
-            group_response: The group chat response to format
+            group_response: The group chat response (GroupChatResponse object or dict)
             format_type: The desired format type ('user_friendly' or 'detailed')
             
         Returns:
             Formatted response
         """
         try:
+            # Handle both dict and GroupChatResponse object
+            if isinstance(group_response, dict):
+                return await self._format_dict_response(group_response, format_type)
+            
             if format_type == "detailed":
                 return await self._format_detailed_response(group_response)
             else:
@@ -87,6 +102,73 @@ class ResponseFormatterService:
                 
         except Exception as e:
             logger.error(f"Failed to format group chat response: {str(e)}")
+            return self._create_error_response(str(e))
+    
+    async def _format_dict_response(self, group_response: Dict[str, Any], format_type: str) -> Dict[str, Any]:
+        """
+        Format a dict-based group response.
+        
+        Args:
+            group_response: Dict containing response data
+            format_type: The desired format type
+            
+        Returns:
+            Formatted response
+        """
+        try:
+            messages = group_response.get("messages", [])
+            metadata = group_response.get("metadata", {})
+            session_id = group_response.get("session_id", "")
+            
+            # Filter agent messages (exclude user)
+            agent_messages = [m for m in messages if m.get("agent") != "user"]
+            
+            if format_type == "detailed":
+                return {
+                    "format": "detailed",
+                    "conversation_id": session_id,
+                    "total_turns": group_response.get("total_turns", len(agent_messages)),
+                    "active_participants": metadata.get("participating_agents", []),
+                    "responses": [
+                        {
+                            "agent": m.get("agent"),
+                            "content": m.get("content"),
+                            "metadata": {"turn": m.get("turn", i+1)}
+                        }
+                        for i, m in enumerate(agent_messages)
+                    ],
+                    "summary": group_response.get("summary"),
+                    "metadata": {
+                        "group_chat_type": metadata.get("workflow_type", "parallel"),
+                        "agent_count": metadata.get("agent_count", len(agent_messages)),
+                        "response_type": "detailed"
+                    },
+                    "formatted_at": datetime.utcnow().isoformat()
+                }
+            else:
+                # User-friendly format
+                content = group_response.get("summary") or ""
+                if not content and agent_messages:
+                    # Use the last agent message if no summary
+                    content = agent_messages[-1].get("content", "")
+                
+                return {
+                    "content": content,
+                    "agent": metadata.get("contributing_agents", ["assistant"])[0] if metadata.get("contributing_agents") else "assistant",
+                    "session_id": session_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "format": "user_friendly",
+                    "formatted_at": datetime.utcnow().isoformat(),
+                    "metadata": {
+                        "agent_count": metadata.get("agent_count", 1),
+                        "total_turns": group_response.get("total_turns", 1),
+                        "is_group_chat": metadata.get("is_group_chat", False),
+                        "contributing_agents": metadata.get("contributing_agents", [])
+                    }
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to format dict response: {str(e)}")
             return self._create_error_response(str(e))
     
     async def _format_detailed_response(self, group_response: GroupChatResponse) -> Dict[str, Any]:

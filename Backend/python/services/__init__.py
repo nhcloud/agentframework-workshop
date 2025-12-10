@@ -1,15 +1,22 @@
 """
 Services module exports.
+
+Refactored to match .NET service architecture.
 """
 
-from .agent_service import AgentService
+from .agent_service_new import AgentService, IAgentService
+from .agent_instructions_service import AgentInstructionsService
 from .session_manager import SessionManager
 from .response_formatter_service import ResponseFormatterService
 from .workflow_orchestration_service import WorkflowOrchestrationService
+from .content_safety_service import ContentSafetyService
 
 __all__ = [
     "AgentService",
+    "IAgentService",
+    "AgentInstructionsService",
     "SessionManager",
     "ResponseFormatterService",
-    "WorkflowOrchestrationService"
+    "WorkflowOrchestrationService",
+    "ContentSafetyService"
 ]
