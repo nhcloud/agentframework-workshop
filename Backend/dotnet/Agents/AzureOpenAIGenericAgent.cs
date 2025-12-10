@@ -1,5 +1,7 @@
 using DotNetAgentFramework.Configuration;
 using DotNetAgentFramework.Services;
+using DotNetAgentFramework.Agents.Tools;
+using Microsoft.Extensions.AI;
 using OpenTelemetry.Trace;
 using System.ClientModel;
 using System.Diagnostics;
@@ -8,15 +10,16 @@ using System.Text.Json;
 namespace DotNetAgentFramework.Agents;
 
 /// <summary>
-/// Azure OpenAI Generic Agent - Default agent for general-purpose conversations
+/// Azure OpenAI Generic Agent - Default agent for general-purpose conversations with WeatherTool
 /// </summary>
 public class AzureOpenAIGenericAgent(ILogger logger, AgentInstructionsService instructionsService, IOptions<AzureAIConfig>? azureConfig = null, bool enableMemory = false, ActivitySource? activitySource = null) : BaseAgent(logger, activitySource)
 {
     private readonly AgentInstructionsService _instructionsService = instructionsService;
     private readonly AzureAIConfig? _azureConfig = azureConfig?.Value;
-    private Microsoft.Agents.AI.ChatClientAgent? _agent;
+    private Microsoft.Agents.AI.AIAgent? _agent;
     private readonly Dictionary<string, Microsoft.Agents.AI.AgentThread> _threadCache = new();
     private readonly Dictionary<string, JsonElement> _memoryStates = new();
+    private readonly WeatherTool _weatherTool = new();
 
     public override string Name => "azure_openai_agent";
     public override string Description => _instructionsService.GetDescription("azure_openai_agent");
@@ -28,6 +31,7 @@ public class AzureOpenAIGenericAgent(ILogger logger, AgentInstructionsService in
         using var activity = _activitySource?.StartActivity("AzureOpenAIGenericAgent.Initialize", ActivityKind.Internal);
         activity?.SetTag("agent.name", Name);
         activity?.SetTag("memory.enabled", enableMemory);
+        activity?.SetTag("tools.enabled", true);
 
         await base.InitializeAsync();
 
@@ -60,12 +64,16 @@ public class AzureOpenAIGenericAgent(ILogger logger, AgentInstructionsService in
 
         var azureClient = new AzureOpenAIClient(new Uri(endpoint), new ApiKeyCredential(apiKey));
         var chatClient = azureClient.GetChatClient(deploymentName);
-        var iChatClient = chatClient.AsIChatClient();
+        
+        // Create AIFunction from WeatherTool method
+        var weatherFunction = AIFunctionFactory.Create(_weatherTool.GetWeather);
 
         if (EnableLongRunningMemory)
         {
-            _logger.LogInformation("Initializing Azure OpenAI Generic Agent with UserInfoMemory for long-running memory support");
+            _logger.LogInformation("Initializing Azure OpenAI Generic Agent with UserInfoMemory and WeatherTool for long-running memory support");
 
+            var iChatClient = chatClient.AsIChatClient();
+            
             var agentOptions = new Microsoft.Agents.AI.ChatClientAgentOptions
             {
                 Instructions = Instructions,
@@ -75,15 +83,28 @@ public class AzureOpenAIGenericAgent(ILogger logger, AgentInstructionsService in
                     ctx.JsonSerializerOptions)
             };
 
-            _agent = iChatClient.CreateAIAgent(agentOptions);
+            // Create agent with memory and tools
+            _agent = iChatClient.CreateAIAgent(
+                instructions: Instructions,
+                name: Name,
+                description: Description,
+                tools: [weatherFunction]);
         }
         else
         {
-            _logger.LogInformation("Initializing Azure OpenAI Generic Agent without memory");
-            _agent = iChatClient.CreateAIAgent(instructions: Instructions);
+            _logger.LogInformation("Initializing Azure OpenAI Generic Agent with WeatherTool without memory");
+            
+            // Create agent with tools
+            _agent = chatClient
+                .AsIChatClient()
+                .CreateAIAgent(
+                    instructions: Instructions,
+                    name: Name,
+                    description: Description,
+                    tools: [weatherFunction]);
         }
 
-        _logger.LogInformation("Initialized Azure OpenAI Generic Agent with Azure OpenAI deployment: {DeploymentName} (Memory: {MemoryEnabled})",
+        _logger.LogInformation("Initialized Azure OpenAI Generic Agent with Azure OpenAI deployment: {DeploymentName} (Memory: {MemoryEnabled}, Tools: WeatherTool)",
             deploymentName, EnableLongRunningMemory);
         return Task.CompletedTask;
     }

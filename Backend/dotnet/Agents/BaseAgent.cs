@@ -25,7 +25,7 @@ public abstract class BaseAgent(ILogger logger, ActivitySource? activitySource =
     protected readonly ILogger _logger = logger;
     protected readonly ActivitySource? _activitySource = activitySource;
     protected ChatClient? _chatClient;
-    protected Microsoft.Agents.AI.ChatClientAgent? _aiAgent;
+    protected Microsoft.Agents.AI.AIAgent? _aiAgent;
     protected readonly Dictionary<string, JsonElement> _userMemoryState = new();
 
     public abstract string Name { get; }
@@ -411,7 +411,7 @@ public class AzureAIFoundryAgent(
     private readonly string _modelDeployment = modelDeployment;
     private readonly Azure.Core.TokenCredential? _credential = credential ?? new DefaultAzureCredential();
     private PersistentAgentsClient? _azureAgentClient;
-    private Microsoft.Agents.AI.ChatClientAgent? _foundryAgent;
+    private Microsoft.Agents.AI.AIAgent? _foundryAgent;
     private readonly Dictionary<string, Microsoft.Agents.AI.AgentThread> _threadCache = new();
 
     public override string Name { get; } = name;
