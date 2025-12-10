@@ -156,7 +156,7 @@ public class AgentService : IAgentService
             }
 
             var foundryAgent = new AzureAIFoundryAgent(
-                name: _azureConfig.AzureAIFoundry.AgentId,
+                name: "ms_foundry_people_agent",//_azureConfig.AzureAIFoundry.AgentId,
                 agentId: agentId,
                 projectEndpoint: _azureConfig.AzureAIFoundry.ProjectEndpoint,
                 description: description,
