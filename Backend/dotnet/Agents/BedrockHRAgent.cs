@@ -44,18 +44,19 @@ public class BedrockHRAgent(ILogger logger, AgentInstructionsService instruction
     private void InitializeBedrockAgent()
     {
         // Map .env keys to AWS credentials and model/region
-        var apiKey = Environment.GetEnvironmentVariable("AWS_API_KEY");
-        var accessKey = Environment.GetEnvironmentVariable("AWS_KEY_NAME");
+       
+        var accessKey = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID");
+        var secretKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY");
         var regionName = Environment.GetEnvironmentVariable("AWS_REGION") ?? "us-east-1";
         var modelId = Environment.GetEnvironmentVariable("AWS_BEDROCK_MODEL_ID") ?? "amazon.nova-pro-v1:0";
 
-        if (string.IsNullOrEmpty(apiKey))
+        if (string.IsNullOrEmpty(secretKey))
         {
-            throw new InvalidOperationException("AWS_API_KEY must be set for Bedrock HR Agent");
+            throw new InvalidOperationException("AWS_SECRET_ACCESS_KEY must be set for Bedrock HR Agent");
         }
 
         // For API key style auth, use BasicAWSCredentials where the 'access key' is the API key
-        var credentials = new BasicAWSCredentials(apiKey, accessKey);
+        var credentials = new BasicAWSCredentials(accessKey, secretKey);
 
         var config = new AmazonBedrockRuntimeConfig
         {
