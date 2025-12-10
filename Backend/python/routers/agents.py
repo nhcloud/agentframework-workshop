@@ -26,7 +26,7 @@ async def get_agents(app_request: Request) -> Dict[str, Any]:
     """
     try:
         agent_service = app_request.app.state.agent_service
-        agents = agent_service.get_available_agents()
+        agents = await agent_service.get_available_agents_async()
         
         agent_list = []
         for agent in agents:
@@ -128,41 +128,54 @@ async def get_agent_info(agent_name: str, app_request: Request) -> Dict[str, Any
     try:
         agent_service = app_request.app.state.agent_service
         
-        # Get agent status
-        agent_status = agent_service.get_agent_status(agent_name)
-        
-        if agent_status.get("status") == "not_found":
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-        
-        # Try to get the actual agent instance for more details
+        # Try to get the actual agent instance
         try:
-            agent = agent_service.get_agent(agent_name)
+            agent = await agent_service.get_agent_async(agent_name)
             if agent:
                 agent_info = {
                     "name": agent.name,
                     "description": agent.description,
-                    "type": agent.agent_type,
+                    "type": "Agent",
                     "status": "available",
-                    "initialized": agent._is_initialized,
                     "instructions": agent.instructions[:200] + "..." if len(agent.instructions) > 200 else agent.instructions,
-                    "metadata": {
-                        "created_at": agent_status.get("created_at"),
-                        "last_accessed": agent_status.get("last_accessed"),
-                        "cached": agent_status.get("cached", False)
-                    }
+                    "metadata": {}
                 }
                 return agent_info
         except Exception as ex:
-            logger.warning(f"Could not get full agent details for {agent_name}: {str(ex)}")
-        
-        # Return basic status information if we can't get full details
-        return agent_status
+            logger.warning(f"Could not get agent details for {agent_name}: {str(ex)}")
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
         
     except HTTPException:
         raise
     except Exception as ex:
         logger.error(f"Error getting agent info for {agent_name}: {str(ex)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve information for agent '{agent_name}'")
+
+
+@router.get("/{agent_name}/auth", response_model=Dict[str, Any])
+async def get_agent_auth_status(agent_name: str, app_request: Request) -> Dict[str, Any]:
+    """Expose authentication path for an agent (MI vs DAC)."""
+    try:
+        agent_service = app_request.app.state.agent_service
+        agent = await agent_service.get_agent_async(agent_name)
+
+        if not agent:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+
+        if hasattr(agent, "get_auth_status"):
+            return agent.get_auth_status()
+
+        return {
+            "agent": agent_name,
+            "credential_source": "unknown",
+            "initialized": getattr(agent, "_agents_client", None) is not None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as ex:
+        logger.error(f"Error getting auth status for agent {agent_name}: {str(ex)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get auth status for agent '{agent_name}'")
 
 
 @router.post("/{agent_name}/initialize")
@@ -182,15 +195,10 @@ async def initialize_agent(agent_name: str, app_request: Request) -> Dict[str, A
     try:
         agent_service = app_request.app.state.agent_service
         
-        # Check if agent exists
-        agent_status = agent_service.get_agent_status(agent_name)
-        if agent_status.get("status") == "not_found":
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-        
         # Get and initialize the agent
-        agent = agent_service.get_agent(agent_name)
+        agent = await agent_service.get_agent_async(agent_name)
         if not agent:
-            raise HTTPException(status_code=500, detail=f"Failed to initialize agent '{agent_name}'")
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
         
         return {
             "agent": agent_name,
@@ -198,9 +206,7 @@ async def initialize_agent(agent_name: str, app_request: Request) -> Dict[str, A
             "message": f"Agent '{agent_name}' has been successfully initialized",
             "details": {
                 "name": agent.name,
-                "type": agent.agent_type,
-                "description": agent.description,
-                "initialized": agent._is_initialized
+                "description": agent.description
             }
         }
         
@@ -224,12 +230,19 @@ async def get_agent_status(agent_name: str, app_request: Request) -> Dict[str, A
     """
     try:
         agent_service = app_request.app.state.agent_service
-        agent_status = agent_service.get_agent_status(agent_name)
         
-        if agent_status.get("status") == "not_found":
+        # Try to get the agent
+        agent = await agent_service.get_agent_async(agent_name)
+        
+        if not agent:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
         
-        return agent_status
+        return {
+            "agent": agent_name,
+            "status": "available",
+            "name": agent.name,
+            "description": agent.description
+        }
         
     except HTTPException:
         raise
@@ -261,11 +274,6 @@ async def chat_with_agent(agent_name: str, request: Dict[str, Any], app_request:
         agent_service = app_request.app.state.agent_service
         session_manager = app_request.app.state.session_manager
         
-        # Check if agent exists  
-        agent_status = agent_service.get_agent_status(agent_name)
-        if agent_status.get("status") == "not_found":
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-        
         # Get conversation history if session_id provided
         conversation_history = []
         session_id = request.get("session_id")
@@ -277,9 +285,13 @@ async def chat_with_agent(agent_name: str, request: Dict[str, Any], app_request:
         else:
             session_id = await session_manager.create_session()
         
-        # Execute chat with agent
-        response = agent_service.chat_with_agent(
-            agent_name, request["message"], conversation_history
+        # Execute chat with agent (async)
+        chat_request = {
+            "message": request["message"],
+            "session_id": session_id
+        }
+        response = await agent_service.chat_with_agent_async(
+            agent_name, chat_request, conversation_history
         )
         
         # Add session ID to response
@@ -309,8 +321,8 @@ async def get_agent_capabilities(agent_name: str, app_request: Request) -> Dict[
         agent_service = app_request.app.state.agent_service
         
         # Check if agent exists
-        agent_status = agent_service.get_agent_status(agent_name)
-        if agent_status.get("status") == "not_found":
+        agent = await agent_service.get_agent_async(agent_name)
+        if not agent:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
         
         # Define capabilities based on agent type
@@ -355,9 +367,9 @@ async def get_agent_capabilities(agent_name: str, app_request: Request) -> Dict[
         
         base_capabilities = {
             "agent": agent_name,
-            "type": agent_status.get("type", "unknown"),
-            "description": agent_status.get("description", ""),
-            "status": agent_status.get("status", "unknown"),
+            "type": "Agent",
+            "description": agent.description if agent else "",
+            "status": "available",
             "capabilities": capabilities_map.get(agent_name, {
                 "primary_functions": ["General assistance"],
                 "specializations": ["As configured"],

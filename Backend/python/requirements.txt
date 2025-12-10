@@ -13,6 +13,8 @@ pyyaml
 azure-identity
 azure-ai-inference
 azure-ai-contentsafety
+azure-ai-projects>=1.0.0b4
+azure-ai-agents>=1.0.0b1
 openai
 
 # Data handling

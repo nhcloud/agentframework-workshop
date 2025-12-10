@@ -25,7 +25,8 @@ from routers import chat, agents, safety
 from core.config import settings
 from core.logging_config import setup_logging
 from core.observability import initialize_observability, get_observability_manager
-from services.agent_service import AgentService
+from services.agent_service_new import AgentService
+from services.agent_instructions_service import AgentInstructionsService
 from services.session_manager import SessionManager
 from services.workflow_orchestration_service import WorkflowOrchestrationService
 from services.content_safety_service import ContentSafetyService
@@ -51,9 +52,10 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("??  Observability not initialized - telemetry will be limited")
     
-    # Initialize services
+    # Initialize services (matches .NET Program.cs service registration pattern)
     session_manager = SessionManager()
-    agent_service = AgentService()
+    instructions_service = AgentInstructionsService()  # Matches .NET AgentInstructionsService
+    agent_service = AgentService()  # Matches .NET AgentService with factory pattern
     content_safety_service = ContentSafetyService()
     workflow_service = WorkflowOrchestrationService(
         agent_service, 
@@ -61,8 +63,9 @@ async def lifespan(app: FastAPI):
         content_safety_service=content_safety_service
     )
     
-    # Store services in app state
+    # Store services in app state (similar to .NET DI container)
     app.state.session_manager = session_manager
+    app.state.instructions_service = instructions_service
     app.state.agent_service = agent_service  
     app.state.workflow_service = workflow_service
     app.state.content_safety_service = content_safety_service

@@ -1,117 +1,60 @@
-# Configuration file for Agent Framework
-# Agent configurations loaded from this file
+# Python Agent Framework Configuration
+# Matches .NET implementation structure exactly
 
 # Application settings
 app:
-  title: ".NET Agent Framework AI Agent System"
+  title: "Python Agent Framework AI Agent System"
   version: "2.0.0"
   frontend_url: "${FRONTEND_URL:*}"
   log_level: "${LOG_LEVEL:Information}"
   environment: "${ENVIRONMENT:Production}"
 
-# Azure OpenAI configuration (for Agent Framework)
+# Azure OpenAI configuration
 azure_openai:
   endpoint: "${AZURE_OPENAI_ENDPOINT}"
   deployment: "${AZURE_OPENAI_DEPLOYMENT_NAME}"
   api_key: "${AZURE_OPENAI_API_KEY}"
   api_version: "${AZURE_OPENAI_API_VERSION:2024-02-01}"
 
-# Azure AI Foundry project configuration
-azure_foundry:
-  project_endpoint: "${PROJECT_ENDPOINT}"
-  people_agent_id: "${PEOPLE_AGENT_ID}"
-  knowledge_agent_id: "${KNOWLEDGE_AGENT_ID}"
+# Microsoft Foundry configuration
+ms_foundry:
+  project_endpoint: "${MS_FOUNDRY_PROJECT_ENDPOINT}"
+  agent_id: "${MS_FOUNDRY_AGENT_ID}"
 
-# Session management
-sessions:
-  storage_type: "${SESSION_STORAGE_TYPE:file}"  # memory, file, redis
-  storage_path: "${SESSION_STORAGE_PATH:./sessions}"
-  redis_url: "${REDIS_URL:}"
-  cleanup_interval_hours: 24
-  max_age_days: 7
-
-# Caching
-cache:
-  enabled: true
-  max_size: 1000
-  ttl_seconds: 3600
-
-# Logging and monitoring
-logging:
-  level: "${LOG_LEVEL:Information}"
-  format: "structured"
-  enable_debug: "${DEBUG_LOGS:false}"
-
-# Agent configurations
+# Agent configurations (matches .NET exactly)
 agents:
-  generic_agent:
-    type: "generic"
+  azure_openai_agent:
     enabled: true
     instructions: |
-      You are a helpful, knowledgeable, and versatile assistant powered by Azure OpenAI and Microsoft Agent Framework, designed to help with a wide variety of tasks and questions.
-      
-      Your capabilities include:
-      - Answering general knowledge questions
-      - Helping with analysis and problem-solving
-      - Providing explanations and tutorials
-      - Assisting with writing and communication
-      - Supporting research and information gathering
+      You are a helpful, knowledgeable, and versatile assistant powered by Azure OpenAI.
+      Provide clear, accurate, and helpful responses across various domains including general conversation,
+      problem solving, task assistance, and research support.
+    metadata:
+      description: "General-purpose conversational agent powered by Azure OpenAI"
 
-      Guidelines for responses:
-      - Be clear, accurate, and helpful
-      - Provide specific examples when appropriate
-      - Ask clarifying questions if the request is ambiguous
-      - Admit when you don't know something rather than guessing
-      - Structure your responses logically and use formatting when helpful
-      - Be concise but thorough
-
-      Remember: You are part of a multi-agent system. Focus on being a reliable general-purpose assistant while other specialized agents handle domain-specific tasks.
-    description: "A versatile general-purpose assistant using Azure OpenAI and Microsoft Agent Framework"
-
-  people_lookup:
-    type: "specialized"
+  ms_foundry_people_agent:
     enabled: true
     instructions: |
-      You are a People Lookup Agent specialized in finding and retrieving information about people within an organization.
-      
-      Your primary functions:
-      - Search for employees by name, department, role, or other criteria
-      - Provide employee contact information (when appropriate and authorized)
-      - Look up organizational hierarchy and reporting structures
-      - Find team members and project participants
-      - Retrieve employee profiles and basic information
+      You are a People Lookup Agent expert at finding information about people, contacts, and team members.
+      Base answers on verified directory information. When you cannot confirm details, clearly state that 
+      no record was found and suggest contacting HR/IT. Never invent names, titles, roles, or contact details.
+    metadata:
+      description: "Specialized agent for finding people information using Microsoft Foundry"
 
-      Guidelines:
-      - Always respect privacy and data protection policies
-      - Only provide information that is appropriate to share
-      - Be helpful in connecting people within the organization
-      - If you don't have access to certain information, explain the limitations
-      - Use professional and respectful language
-      - Clarify the purpose of information requests when needed
-
-      Data Sources: You have access to employee directories and organizational data through approved systems.
-    description: "Specialized agent for finding people and organizational information"
-
-  knowledge_finder:
-    type: "specialized" 
+  bedrock_agent:
     enabled: true
     instructions: |
-      You are a Knowledge Finder Agent specialized in searching and retrieving information from organizational knowledge bases and document repositories.
-      
-      Your primary functions:
-      - Search through company documents, policies, and procedures
-      - Find relevant information from knowledge bases
-      - Locate specific data in organizational repositories
-      - Retrieve and summarize document contents
-      - Provide answers based on company-specific information
+      You are an HR and workplace policy assistant running on AWS Bedrock.
+      Help employees with company policies, benefits, time off, and general HR guidance.
+      If unsure of details, recommend checking official policy documents or contacting HR.
+    metadata:
+      description: "HR and workplace policy assistant powered by AWS Bedrock"
 
-      Guidelines:
-      - Search thoroughly through available knowledge sources
-      - Provide accurate information with source references when possible
-      - Summarize complex documents clearly and concisely
-      - Indicate when information might be outdated or needs verification
-      - Respect access controls and permissions for sensitive documents
-      - If information is not found, suggest alternative search strategies
-
-      Data Sources: You have access to organizational knowledge bases, document libraries, and approved information repositories.
-    description: "Specialized agent for searching and retrieving organizational knowledge"
+  openai_agent:
+    enabled: true
+    instructions: |
+      You are a helpful assistant running on OpenAI's GPT-4.1 model.
+      Specialize in software development, architecture, debugging, and technical explanation.
+      Provide clear, concise answers with minimal, focused code examples.
+    metadata:
+      description: "Direct OpenAI assistant for development and technical help"

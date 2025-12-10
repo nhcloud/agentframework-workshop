@@ -80,7 +80,7 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
         if not request.agents or len(request.agents) == 0:
             logger.info("No agents specified, auto-selecting based on message content")
             
-            available_agents = agent_service.get_available_agents()
+            available_agents = await agent_service.get_available_agents_async()
             if available_agents:
                 request.agents = [available_agents[0].name]
                 logger.info(f"Auto-selected agent: {request.agents[0]}")
@@ -150,8 +150,12 @@ async def chat(request: ChatRequest, app_request: Request) -> Dict[str, Any]:
             
             try:
                 # Execute single agent chat using Agent Framework
-                agent_response = await agent_service.chat_with_agent(
-                    agent_name, request.message, conversation_history
+                chat_request = {
+                    "message": request.message,
+                    "session_id": session_id
+                }
+                agent_response = await agent_service.chat_with_agent_async(
+                    agent_name, chat_request, conversation_history
                 )
                 
                 # Content Safety - check agent output

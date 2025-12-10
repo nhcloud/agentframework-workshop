@@ -1,236 +1,118 @@
 """
-UserInfoMemory - Long-running memory provider for Microsoft Agent Framework (Python)
+User Info Memory for agents.
 
-This module provides a memory system that extracts and remembers user information
-(name, persona) across conversations, matching the .NET implementation.
+Provides memory storage for user information that can be used across conversations.
+Matches the pattern used in .NET for agent memory.
 """
 
-import json
-import re
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass, asdict
-from agent_framework import AIContextProvider, InvokingContext, InvokedContext, AIContext
-from microsoft.extensions.ai import IChatClient, ChatRole, ChatOptions
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class UserInfo:
-    """Stores user information extracted from conversations."""
-    user_name: Optional[str] = None
-    user_persona: Optional[str] = None
-    has_asked_for_name: bool = False
-    has_asked_for_persona: bool = False
-
-
-class UserInfoMemory(AIContextProvider):
+class UserInfoMemory:
     """
-    AI Context Provider that extracts and remembers user information.
+    Memory storage for user information.
     
-    This provider:
-    - Extracts user name and persona from messages
-    - Stores information across conversation turns
-    - Provides personalized context to the agent
-    - Serializes/deserializes state for persistence
+    Stores and retrieves user-specific information that can be used
+    to personalize agent responses across conversations.
     """
     
-    def __init__(self, chat_client: IChatClient, user_info: Optional[UserInfo] = None, 
-                 serialized_state: Optional[Dict[str, Any]] = None):
-        """
-        Initialize UserInfoMemory provider.
-        
-        Args:
-            chat_client: The chat client for extraction queries
-            user_info: Optional pre-populated user info
-            serialized_state: Optional serialized state to restore from
-        """
-        self._chat_client = chat_client
-        self._has_asked_for_name = False
-        self._has_asked_for_persona = False
-        
-        if serialized_state:
-            self.user_info = UserInfo(**serialized_state) if isinstance(serialized_state, dict) else UserInfo()
-            # Restore the "asked" flags from serialized state
-            self._has_asked_for_name = bool(self.user_info.user_name) or self.user_info.has_asked_for_name
-            self._has_asked_for_persona = bool(self.user_info.user_persona) or self.user_info.has_asked_for_persona
-        else:
-            self.user_info = user_info or UserInfo()
+    def __init__(self):
+        """Initialize the user info memory."""
+        self._memory: Dict[str, Dict[str, Any]] = {}
+        logger.info("UserInfoMemory initialized")
     
-    async def invoked_async(self, context: InvokedContext, cancellation_token: Optional[Any] = None) -> None:
+    def store(self, session_id: str, key: str, value: Any) -> None:
         """
-        Called after the agent processes a request to extract user information.
+        Store a value in memory for a session.
         
         Args:
-            context: The invoked context with request/response messages
-            cancellation_token: Optional cancellation token
+            session_id: Session identifier
+            key: Key for the value
+            value: Value to store
         """
-        # Only try to extract user info if we don't have it already and there are user messages
-        if (not self.user_info.user_name or not self.user_info.user_persona):
-            user_messages = [msg for msg in context.request_messages if msg.role == ChatRole.User]
-            
-            if user_messages:
-                try:
-                    # Get the last user message to check for name/persona
-                    last_user_message = user_messages[-1]
-                    message_text = last_user_message.text or ""
-                    
-                    # Only extract if the message seems to contain personal information
-                    if self._could_contain_user_info(message_text):
-                        # Use structured output to extract user info
-                        extraction_prompt = [
-                            {
-                                "role": "system",
-                                "content": "Extract ONLY the user's name and persona/age from the message if explicitly provided. Return nulls if not clearly stated. Examples: 'My name is John' ? user_name='John', 'I'm a developer' ? user_persona='developer', 'I'm 25' ? user_persona='25 years old'"
-                            },
-                            {
-                                "role": "user",
-                                "content": message_text
-                            }
-                        ]
-                        
-                        # Simple extraction using pattern matching (fallback if no structured output available)
-                        extracted_info = self._extract_user_info_pattern(message_text)
-                        
-                        # Update if we got new information
-                        if extracted_info.get("user_name"):
-                            self.user_info.user_name = extracted_info["user_name"]
-                        
-                        if extracted_info.get("user_persona"):
-                            self.user_info.user_persona = extracted_info["user_persona"]
-                            
-                except Exception:
-                    # If extraction fails, just continue without user info
-                    # Don't block the conversation
-                    pass
+        if session_id not in self._memory:
+            self._memory[session_id] = {}
+        
+        self._memory[session_id][key] = {
+            "value": value,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        logger.debug(f"Stored '{key}' for session {session_id}")
     
-    async def invoking_async(self, context: InvokingContext, cancellation_token: Optional[Any] = None) -> AIContext:
+    def retrieve(self, session_id: str, key: str) -> Optional[Any]:
         """
-        Called before the agent processes a request to provide context.
+        Retrieve a value from memory.
         
         Args:
-            context: The invoking context
-            cancellation_token: Optional cancellation token
+            session_id: Session identifier
+            key: Key for the value
             
         Returns:
-            AIContext with instructions for the agent
+            Stored value or None if not found
         """
-        instructions = []
+        if session_id not in self._memory:
+            return None
         
-        # Provide information we have, and gently ask for missing info (but don't block)
-        if self.user_info.user_name:
-            instructions.append(f"The user's name is {self.user_info.user_name}.")
-        elif not self._has_asked_for_name:
-            instructions.append("If appropriate and natural in the conversation, you may ask the user for their name. But DO NOT block answering their questions.")
-            self._has_asked_for_name = True
-            self.user_info.has_asked_for_name = True
-        
-        if self.user_info.user_persona:
-            instructions.append(f"The user's persona/background: {self.user_info.user_persona}.")
-        elif not self._has_asked_for_persona and self.user_info.user_name:
-            instructions.append("If it feels natural, you may ask about their role or background. But DO NOT block answering their questions.")
-            self._has_asked_for_persona = True
-            self.user_info.has_asked_for_persona = True
-        
-        # If we have user info, encourage personalized responses
-        if self.user_info.user_name or self.user_info.user_persona:
-            instructions.append("Use this information to personalize your responses when appropriate.")
-        
-        return AIContext(
-            instructions="\n".join(instructions) if instructions else None
-        )
+        entry = self._memory[session_id].get(key)
+        if entry:
+            return entry.get("value")
+        return None
     
-    def serialize(self) -> Dict[str, Any]:
+    def get_all(self, session_id: str) -> Dict[str, Any]:
         """
-        Serialize the user info state for persistence.
-        
-        Returns:
-            Dictionary representation of user info
-        """
-        return asdict(self.user_info)
-    
-    @staticmethod
-    def _could_contain_user_info(message: str) -> bool:
-        """
-        Check if a message might contain user information to avoid unnecessary extraction calls.
+        Get all stored values for a session.
         
         Args:
-            message: The message text to check
+            session_id: Session identifier
             
         Returns:
-            True if the message likely contains user info
+            Dictionary of all stored values
         """
-        lower_message = message.lower()
+        if session_id not in self._memory:
+            return {}
         
-        # Check for common patterns that indicate user info
-        return any([
-            "name" in lower_message,
-            "i'm " in lower_message,
-            "i m " in lower_message,
-            "i am " in lower_message,
-            "persona" in lower_message,
-            "call me" in lower_message,
-        ])
+        return {
+            key: entry.get("value")
+            for key, entry in self._memory[session_id].items()
+        }
     
-    @staticmethod
-    def _extract_user_info_pattern(message: str) -> Dict[str, Optional[str]]:
+    def clear(self, session_id: str) -> None:
         """
-        Extract user information using pattern matching (fallback method).
+        Clear all memory for a session.
         
         Args:
-            message: The message text
+            session_id: Session identifier
+        """
+        if session_id in self._memory:
+            del self._memory[session_id]
+            logger.debug(f"Cleared memory for session {session_id}")
+    
+    def clear_all(self) -> None:
+        """Clear all memory for all sessions."""
+        self._memory = {}
+        logger.info("Cleared all user info memory")
+    
+    def to_context_string(self, session_id: str) -> str:
+        """
+        Convert stored memory to a context string for the agent.
+        
+        Args:
+            session_id: Session identifier
             
         Returns:
-            Dictionary with extracted user_name and user_persona
+            Formatted string with user information
         """
-        result = {"user_name": None, "user_persona": None}
+        info = self.get_all(session_id)
+        if not info:
+            return ""
         
-        # Name extraction patterns
-        name_patterns = [
-            r"(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+)",
-            r"name['']?s\s+([A-Z][a-z]+)",
-        ]
+        lines = ["User Information:"]
+        for key, value in info.items():
+            lines.append(f"- {key}: {value}")
         
-        for pattern in name_patterns:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                result["user_name"] = match.group(1).strip()
-                break
-        
-        # Persona extraction patterns
-        persona_patterns = [
-            r"i(?:'m| am)\s+a\s+([a-z\s]+?)(?:\s+and|\s+at|\.|$)",
-            r"work(?:ing)?\s+as\s+a\s+([a-z\s]+?)(?:\s+and|\s+at|\.|$)",
-            r"i(?:'m| am)\s+(\d+)\s+years?\s+old",
-        ]
-        
-        persona_parts = []
-        for pattern in persona_patterns:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                persona_parts.append(match.group(1).strip())
-        
-        if persona_parts:
-            result["user_persona"] = ", ".join(persona_parts)
-        
-        return result
+        return "\n".join(lines)
 
-
-# Helper function to create UserInfoMemory from serialized state
-def create_user_info_memory(chat_client: IChatClient, serialized_state: Optional[str] = None) -> UserInfoMemory:
-    """
-    Factory function to create UserInfoMemory with optional serialized state.
-    
-    Args:
-        chat_client: The chat client for extraction queries
-        serialized_state: Optional JSON string with serialized state
-        
-    Returns:
-        UserInfoMemory instance
-    """
-    state_dict = None
-    if serialized_state:
-        try:
-            state_dict = json.loads(serialized_state)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    
-    return UserInfoMemory(chat_client, serialized_state=state_dict)
