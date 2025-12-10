@@ -24,7 +24,7 @@ public class AgentsController(IAgentService agentService, ILogger<AgentsControll
             var agentList = agents.Select(a => new
             {
                 name = a.Name,
-                type = GetAgentType(a.Name),
+                type = GetAgentType(a.Name, a.AgentType),
                 available = true,
                 capabilities = a.Capabilities ?? new List<string>(),
                 provider = GetProviderType(a.AgentType, a.Name)
@@ -45,23 +45,63 @@ public class AgentsController(IAgentService agentService, ILogger<AgentsControll
         }
     }
 
-    private static string GetAgentType(string agentName)
+    private static string GetAgentType(string agentName, string agentType)
     {
+        // Handle foundry agents
+        if (agentName.StartsWith("foundry_"))
+        {
+            return "ms_foundry_agent";
+        }
+        
         return agentName switch
         {
-            "generic_agent" => "generic",
-            "people_lookup" => "people_lookup", 
-            "knowledge_finder" => "knowledge_finder",
-            _ => agentName.Replace("foundry_", "")
+            "azure_openai_agent" => "azure_openai_agent",
+            "ms_foundry_people_agent" => "ms_foundry_agent",
+            "bedrock_agent" => "bedrock_agent",
+            "openai_agent" => "openai_agent",
+            _ => agentName
         };
     }
 
     private static string GetProviderType(string agentType, string agentName)
     {
-        if (agentName.StartsWith("foundry_") || agentType == "Azure AI Foundry")
+        // Check agent name patterns first
+        if (agentName.StartsWith("foundry_") || agentName == "ms_foundry_people_agent")
         {
-            return "azure_foundry";
+            return "ms_foundry";
         }
+        
+        if (agentName == "bedrock_agent")
+        {
+            return "aws";
+        }
+        
+        if (agentName == "openai_agent")
+        {
+            return "openai";
+        }
+        
+        if (agentName == "azure_openai_agent")
+        {
+            return "azure_openai";
+        }
+        
+        // Fallback to agentType
+        if (agentType == "Azure AI Foundry")
+        {
+            return "ms_foundry";
+        }
+        
+        if (agentType == "AWS Bedrock")
+        {
+            return "aws";
+        }
+        
+        if (agentType == "OpenAI")
+        {
+            return "openai";
+        }
+        
         return "azure_openai";
     }
 }

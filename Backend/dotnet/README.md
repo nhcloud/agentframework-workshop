@@ -102,7 +102,7 @@ sequenceDiagram
     participant AzureOpenAI
     participant ResponseFormatter
 
-    Client->>ChatController: POST /chat<br/>{message, agents:["generic_agent"]}
+    Client->>ChatController: POST /chat<br/>{message, agents:["azure_openai_agent"]}
     ChatController->>SessionManager: GetSessionHistory(session_id)
     SessionManager-->>ChatController: conversationHistory[]
     
@@ -417,8 +417,8 @@ graph TD
 
 | Agent | Type | Specialization | Use Cases |
 |-------|------|----------------|-----------|
-| **generic_agent** | AzureOpenAI | General-purpose assistant | Technical questions, explanations, coding help |
-| **foundry_people_lookup** | AzureAIFoundry | Find people and expertise | Employee search, skill matching, team discovery |
+| **azure_openai_agent** | AzureOpenAI | General-purpose assistant | Technical questions, explanations, coding help |
+| **foundry_ms_foundry_people_agent** | AzureAIFoundry | Find people and expertise | Employee search, skill matching, team discovery |
 | **foundry_knowledge_finder** | AzureAIFoundry | Document and policy search | Policy questions, documentation lookup |
 
 > **Note:** Foundry agents require Azure AI Foundry PROJECT_ENDPOINT and agent IDs. Generic agents work with Azure OpenAI only.
@@ -435,7 +435,7 @@ Content-Type: application/json
 
 {
   "message": "What are the best practices for .NET development?",
-  "agents": ["generic_agent"],              // Optional: defaults to auto-select
+  "agents": ["azure_openai_agent"],              // Optional: defaults to auto-select
   "format": "user_friendly",                // Optional: "user_friendly" | "detailed"
   "session_id": "user-session-123",        // Optional: for conversation history
   "max_turns": 3                           // Optional: for multi-agent (default: 2-3)
@@ -446,7 +446,7 @@ Content-Type: application/json
 ```json
 {
   "message": "Explain async/await in C#",
-  "agents": ["generic_agent"],
+  "agents": ["azure_openai_agent"],
   "session_id": "user123"
 }
 ```
@@ -455,7 +455,7 @@ Content-Type: application/json
 ```json
 {
   "message": "Who are the ML experts and what resources do we have?",
-  "agents": ["foundry_people_lookup", "foundry_knowledge_finder"],
+  "agents": ["foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
   "format": "detailed",
   "max_turns": 2
 }
@@ -504,8 +504,8 @@ Synthesized, clean response optimized for end users:
   "format": "user_friendly",
   "metadata": {
     "agent_count": 2,
-    "primary_agent": "foundry_people_lookup",
-    "contributing_agents": ["foundry_people_lookup", "foundry_knowledge_finder"],
+    "primary_agent": "foundry_ms_foundry_people_agent",
+    "contributing_agents": ["foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
     "is_group_chat": true,
     "total_turns": 4,
     "response_type": "user_friendly",
@@ -521,10 +521,10 @@ Full conversation with all agent turns and metadata:
 {
   "conversation_id": "user123",
   "total_turns": 4,
-  "active_participants": ["foundry_people_lookup", "foundry_knowledge_finder"],
+  "active_participants": ["foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
   "responses": [
     {
-      "agent": "foundry_people_lookup",
+      "agent": "foundry_ms_foundry_people_agent",
       "content": "I found 5 ML experts in the organization...",
       "message_id": "msg-001",
       "is_terminated": false,
@@ -553,7 +553,7 @@ Full conversation with all agent turns and metadata:
   "metadata": {
     "group_chat_type": "RoundRobinGroupChat",
     "agent_count": 2,
-    "agents_used": ["foundry_people_lookup", "foundry_knowledge_finder"],
+    "agents_used": ["foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
     "max_turns_used": 2,
     "agent_framework": true,
     "early_termination": false,
@@ -589,14 +589,14 @@ FRONTEND_URL=http://localhost:3001
 
 ```yaml
 agents:
-  - name: generic_agent
+  - name: azure_openai_agent
     model: gpt-4o
     temperature: 0.7
     max_tokens: 1500
     instructions: |
       You are a helpful AI assistant specialized in software development...
 
-  - name: foundry_people_lookup
+  - name: foundry_ms_foundry_people_agent
     type: foundry
     agent_id: ${PEOPLE_AGENT_ID}
     description: Finds people and expertise within the organization
@@ -673,14 +673,14 @@ The workspace includes comprehensive API tests:
 POST {{baseUrl}}/chat
 {
   "message": "Explain async/await",
-  "agents": ["generic_agent"]
+  "agents": ["azure_openai_agent"]
 }
 
 # Multi-agent chat (user-friendly)
 POST {{baseUrl}}/chat
 {
   "message": "Find ML experts and relevant docs",
-  "agents": ["foundry_people_lookup", "foundry_knowledge_finder"],
+  "agents": ["foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
   "format": "user_friendly"
 }
 
@@ -688,7 +688,7 @@ POST {{baseUrl}}/chat
 POST {{baseUrl}}/chat
 {
   "message": "Find ML experts and relevant docs",
-  "agents": ["foundry_people_lookup", "foundry_knowledge_finder"],
+  "agents": ["foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
   "format": "detailed"
 }
 

@@ -31,7 +31,7 @@ Content-Type: {{contentType}}
 
 {
   "message": "What are the best practices for building scalable .NET applications?",
-  "agents": ["generic_agent"],
+  "agents": ["azure_openai_agent"],
   "session_id": "single-agent-test"
 }
 
@@ -53,7 +53,7 @@ Content-Type: {{contentType}}
 
 {
   "message": "How should we approach building an AI-powered application? Consider both technical and business perspectives.",
-  "agents": ["generic_agent", "foundry_people_lookup", "foundry_knowledge_finder"],
+  "agents": ["azure_openai_agent", "foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
   "session_id": "group-chat-test",
   "max_turns": 2,
   "format": "user_friendly"
@@ -66,7 +66,7 @@ Content-Type: {{contentType}}
 
 {
   "message": "How should we approach building an AI-powered application? Consider both technical and business perspectives.",
-  "agents": ["generic_agent", "foundry_people_lookup", "foundry_knowledge_finder"],
+  "agents": ["azure_openai_agent", "foundry_ms_foundry_people_agent", "foundry_knowledge_finder"],
   "session_id": "group-chat-detailed-test",
   "max_turns": 2,
   "format": "detailed"
@@ -104,7 +104,7 @@ Content-Type: {{contentType}}
 
 {
   "message": "Remember this: my favorite color is blue",
-  "agents": ["generic_agent"],
+  "agents": ["azure_openai_agent"],
   "session_id": "session-history-test"
 }
 
@@ -115,7 +115,7 @@ Content-Type: {{contentType}}
 
 {
   "message": "What did I just tell you about my favorite color?",
-  "agents": ["generic_agent"],
+  "agents": ["azure_openai_agent"],
   "session_id": "session-history-test"
 }
 
@@ -141,7 +141,7 @@ POST {{baseUrl}}/chat
 Content-Type: {{contentType}}
 
 {
-  "agents": ["generic_agent"],
+  "agents": ["azure_openai_agent"],
   "session_id": "error-test"
 }
 
@@ -168,7 +168,7 @@ Content-Type: {{contentType}}
 
 {
   "message": "Who are the best software engineers in our company?",
-  "agents": ["people_lookup", "knowledge_finder"],
+  "agents": ["ms_foundry_people_agent", "knowledge_finder"],
   "session_id": "termination-test",
   "max_turns": 1
 }

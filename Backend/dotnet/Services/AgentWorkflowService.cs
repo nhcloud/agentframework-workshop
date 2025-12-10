@@ -52,7 +52,7 @@ public class AgentWorkflowService(
         if (agentNames.Count == 0)
         {
             _logger.LogInformation("No agents provided. Selecting a default agent.");
-            agentNames = ["generic_agent"]; // fallback
+            agentNames = ["azure_openai_agent"]; // fallback
         }
 
         var mode = SelectMode(request.Message, agentNames);
@@ -115,8 +115,8 @@ public class AgentWorkflowService(
         var lower = message.ToLowerInvariant();
 
         string? specialist = null;
-        if (agents.Contains("people_lookup") && (lower.Contains("who") || lower.Contains("contact") || lower.Contains("email") || lower.Contains("reach")))
-            specialist = "people_lookup";
+        if (agents.Contains("ms_foundry_people_agent") && (lower.Contains("who") || lower.Contains("contact") || lower.Contains("email") || lower.Contains("reach")))
+            specialist = "ms_foundry_people_agent";
         else if (agents.Contains("knowledge_finder") && (lower.Contains("policy") || lower.Contains("document") || lower.Contains("find") || lower.Contains("search")))
             specialist = "knowledge_finder";
 
@@ -129,13 +129,13 @@ public class AgentWorkflowService(
         foreach (var a in agents)
         {
             if (a == specialist) continue;
-            if (!a.Equals("generic_agent", StringComparison.OrdinalIgnoreCase))
+            if (!a.Equals("azure_openai_agent", StringComparison.OrdinalIgnoreCase))
                 order.Add(a);
         }
 
-        // Put generic_agent at end if present
-        if (agents.Any(a => a.Equals("generic_agent", StringComparison.OrdinalIgnoreCase)))
-            order.Add("generic_agent");
+        // Put azure_openai_agent at end if present
+        if (agents.Any(a => a.Equals("azure_openai_agent", StringComparison.OrdinalIgnoreCase)))
+            order.Add("azure_openai_agent");
 
         // Ensure all provided agents are represented
         foreach (var a in agents)
@@ -146,7 +146,7 @@ public class AgentWorkflowService(
 
     private async Task RunSingleAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, CancellationToken ct)
     {
-        var agentName = request.Agents?.FirstOrDefault() ?? "generic_agent";
+        var agentName = request.Agents?.FirstOrDefault() ?? "azure_openai_agent";
         var agent = await _agentService.GetAgentAsync(agentName);
         if (agent == null)
         {
@@ -225,13 +225,13 @@ public class AgentWorkflowService(
         if (best == null) return;
 
         // Follow-up with generic agent if available to finalize with a clean response
-        if (agents.Any(a => a.Equals("generic_agent", StringComparison.OrdinalIgnoreCase)))
+        if (agents.Any(a => a.Equals("azure_openai_agent", StringComparison.OrdinalIgnoreCase)))
         {
-            var generic = await _agentService.GetAgentAsync("generic_agent");
+            var generic = await _agentService.GetAgentAsync("azure_openai_agent");
             if (generic != null)
             {
                 var content = await generic.RespondAsync(request.Message, context: best.Content);
-                var msg = MakeAgentMessage("generic_agent", content, agentResponses.Count + 1);
+                var msg = MakeAgentMessage("azure_openai_agent", content, agentResponses.Count + 1);
                 messages.Add(msg);
                 await _sessionManager.AddMessageToSessionAsync(sessionId, msg);
             }
