@@ -10,6 +10,8 @@ from .session_manager import SessionManager
 from .response_formatter_service import ResponseFormatterService
 from .workflow_orchestration_service import WorkflowOrchestrationService
 from .content_safety_service import ContentSafetyService
+from .mcp_client_service import McpClientService
+from .mcp_tool_function_factory import McpToolFunctionFactory
 
 __all__ = [
     "AgentService",
@@ -18,5 +20,7 @@ __all__ = [
     "SessionManager",
     "ResponseFormatterService",
     "WorkflowOrchestrationService",
-    "ContentSafetyService"
+    "ContentSafetyService",
+    "McpClientService",
+    "McpToolFunctionFactory",
 ]

@@ -22,6 +22,7 @@ env_path = Path(__file__).parent / ".env"
 load_dotenv(env_path)
 
 from routers import chat, agents, safety
+from routers import mcp, demo  # New MCP and Demo routers
 from core.config import settings
 from core.logging_config import setup_logging
 from core.observability import initialize_observability, get_observability_manager
@@ -30,6 +31,8 @@ from services.agent_instructions_service import AgentInstructionsService
 from services.session_manager import SessionManager
 from services.workflow_orchestration_service import WorkflowOrchestrationService
 from services.content_safety_service import ContentSafetyService
+from services.mcp_client_service import McpClientService
+from services.mcp_tool_function_factory import McpToolFunctionFactory
 
 # Setup logging
 setup_logging()
@@ -54,9 +57,14 @@ async def lifespan(app: FastAPI):
     
     # Initialize services (matches .NET Program.cs service registration pattern)
     session_manager = SessionManager()
-    instructions_service = AgentInstructionsService()  # Matches .NET AgentInstructionsService
-    agent_service = AgentService()  # Matches .NET AgentService with factory pattern
+    instructions_service = AgentInstructionsService()
+    agent_service = AgentService()
     content_safety_service = ContentSafetyService()
+    
+    # Initialize MCP services (matches .NET MCP implementation)
+    mcp_client_service = McpClientService()
+    mcp_tool_factory = McpToolFunctionFactory(mcp_client_service)
+    
     workflow_service = WorkflowOrchestrationService(
         agent_service, 
         session_manager,
@@ -71,13 +79,28 @@ async def lifespan(app: FastAPI):
     app.state.content_safety_service = content_safety_service
     app.state.observability_manager = get_observability_manager()
     
+    # MCP services
+    app.state.mcp_client_service = mcp_client_service
+    app.state.mcp_tool_factory = mcp_tool_factory
+    
+    # Log MCP configuration
+    try:
+        servers = await mcp_client_service.get_configured_servers()
+        logger.info(f"MCP Client Service: Initialized with {len(servers)} servers")
+        for server in servers:
+            logger.info(f"  - {server.name} ({server.transport}): {'enabled' if server.enabled else 'disabled'}")
+    except Exception as ex:
+        logger.warning(f"Could not enumerate MCP servers: {str(ex)}")
+    
     logger.info("Agent Framework application started successfully")
     logger.info(f"Content Safety: {'Enabled' if content_safety_service.enabled else 'Disabled'}")
+    
     yield
     
     logger.info("Shutting down Agent Framework application...")
     # Cleanup services
     await session_manager.cleanup()
+    await mcp_client_service.close()
     
     # Shutdown observability
     get_observability_manager().shutdown()
@@ -86,7 +109,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Microsoft Agent Framework API",
-    description="A production-ready multi-agent orchestration framework built with Microsoft Agent Framework and Azure AI integration",
+    description="A production-ready multi-agent orchestration framework built with Microsoft Agent Framework and Azure AI integration. Includes MCP (Model Context Protocol) support for external tool integration.",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/",
@@ -96,7 +119,9 @@ app = FastAPI(
 # Configure CORS
 frontend_urls = [
     settings.FRONTEND_URL,
+    "http://localhost:3000",
     "http://localhost:3001",
+    "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
     "https://localhost:3001"
 ]
@@ -113,12 +138,19 @@ app.add_middleware(
 app.include_router(chat.router)
 app.include_router(agents.router)
 app.include_router(safety.router)
+app.include_router(mcp.router)  # MCP management endpoints
+app.include_router(demo.router)  # Demo API endpoints
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "version": "2.0.0"}
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "framework": "Python FastAPI",
+        "features": ["chat", "agents", "safety", "mcp", "demo"]
+    }
 
 
 @app.exception_handler(Exception)
@@ -129,3 +161,10 @@ async def global_exception_handler(request, exc):
         status_code=500,
         content={"detail": "Internal server error"}
     )
+
+
+# For running directly with python main.py
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
