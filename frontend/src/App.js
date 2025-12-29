@@ -30,6 +30,7 @@ import {
 import ChatService from './services/ChatService';
 import VoiceService from './services/VoiceService';
 import SafetyTester from './SafetyTester';
+import ToolsSelector from './components/ToolsSelector';
 
 // Global styles
 const GlobalStyle = createGlobalStyle`
@@ -117,6 +118,25 @@ const SidebarContent = styled.div`
   opacity: ${props => props.collapsed ? 0 : 1};
   transition: opacity 0.2s ease;
   pointer-events: ${props => props.collapsed ? 'none' : 'auto'};
+  overflow-y: auto;
+  max-height: calc(100vh - 100px);
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: ${props => props.theme.colors.border};
+    border-radius: 3px;
+    
+    &:hover {
+      background: ${props => props.theme.colors.textMuted};
+    }
+  }
 `;
 
 const SidebarToggle = styled(motion.button)`
@@ -897,6 +917,9 @@ function App() {
   const [responseFormat, setResponseFormat] = useState('user_friendly'); // 'user_friendly' or 'detailed'
   const [agentLoadError, setAgentLoadError] = useState(null);
   
+  // Tools state
+  const [selectedTools, setSelectedTools] = useState([]);
+  
   // Memory toggle state
   const [enableMemory, setEnableMemory] = useState(false);
   
@@ -1069,7 +1092,8 @@ function App() {
           selectedAgents.length > 1 ? maxTurns : null,
           selectedAgents.length > 1 ? responseFormat : null,
           enableMemory,
-          enableStreaming  // Pass streaming flag
+          enableStreaming,  // Pass streaming flag
+          selectedTools.length > 0 ? selectedTools : null  // Pass selected tools
         );
       }
 
@@ -1349,6 +1373,14 @@ function App() {
               </>
             )}
           </AgentSection>
+
+          {/* Tools Selector - Local and MCP Tools */}
+          <ToolsSelector
+            chatService={chatService}
+            selectedTools={selectedTools}
+            onToolsChange={setSelectedTools}
+            disabled={isLoading}
+          />
 
           <VoiceSection>
             <h3>

@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "DotNetAgentFramework.McpServer": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:58710;http://localhost:58711"
+    }
+  }
+}

@@ -91,8 +91,16 @@ public class ChatController(
                 SessionId = sessionId,
                 MaxTurns = request.MaxTurns ?? 3,
                 Format = request.Format ?? "user_friendly",
-                Context = request.Context
+                Context = request.Context,
+                SelectedTools = request.SelectedTools  // Pass selected tools to workflow
             };
+
+            // Log selected tools for debugging
+            if (request.SelectedTools?.Count > 0)
+            {
+                _logger.LogInformation("Selected tools for chat: {Tools}", 
+                    string.Join(", ", request.SelectedTools.Select(t => $"{t.Source}:{t.FullName ?? t.Name}")));
+            }
 
             var workflowResponse = await _workflowService.OrchestrateAsync(workflowRequest, HttpContext.RequestAborted);
 
@@ -369,13 +377,31 @@ public class ChatController(
                 }
             }
 
+            // Parse selected tools
+            List<SelectedToolInfo>? selectedTools = null;
+            if (!string.IsNullOrWhiteSpace(form.SelectedTools))
+            {
+                try
+                {
+                    selectedTools = JsonSerializer.Deserialize<List<SelectedToolInfo>>(form.SelectedTools!, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse selected tools JSON: {Tools}", form.SelectedTools);
+                }
+            }
+
             var request = new ChatRequest
             {
                 Message = msg,
                 SessionId = form.SessionId,
                 Agents = agents,
                 MaxTurns = form.MaxTurns,
-                Format = string.IsNullOrWhiteSpace(form.Format) ? "user_friendly" : form.Format
+                Format = string.IsNullOrWhiteSpace(form.Format) ? "user_friendly" : form.Format,
+                SelectedTools = selectedTools
             };
 
             return await Chat(request);
@@ -396,4 +422,5 @@ public class ChatWithMediaForm
     public int? MaxTurns { get; set; }
     public string? Format { get; set; }
     public IFormFile? Image { get; set; }
+    public string? SelectedTools { get; set; } // JSON array of SelectedToolInfo
 }
