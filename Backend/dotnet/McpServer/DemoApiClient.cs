@@ -6,8 +6,11 @@ using Microsoft.Extensions.Logging;
 namespace DotNetAgentFramework.McpServer;
 
 /// <summary>
-/// HTTP client for calling the SampleRestApi endpoints.
-/// Note: Despite the name "DemoApiClient", this now calls SampleRestApi on port 5001.
+/// HTTP client for calling the Demo API endpoints on the main DotNetAgentFramework API (port 8000).
+/// This calls /api/demo/* endpoints defined in DemoController.
+/// 
+/// For SampleRestApi (port 5001) which has /api/employees, /api/products, etc.,
+/// use RemoteApiClient instead.
 /// </summary>
 public class DemoApiClient
 {
@@ -31,76 +34,54 @@ public class DemoApiClient
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // EMPLOYEE ENDPOINTS - SampleRestApi paths
+    // WEATHER ENDPOINTS - /api/demo/weather
     // ???????????????????????????????????????????????????????????????????????????
 
-    public async Task<JsonElement?> GetEmployeesAsync()
+    public async Task<JsonElement?> GetWeatherAsync(string location)
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/employees");
+        _logger.LogInformation("Calling Demo API: GET /api/demo/weather?location={Location}", location);
         
-        var response = await client.GetAsync("/api/employees");
+        var response = await client.GetAsync($"/api/demo/weather?location={Uri.EscapeDataString(location)}");
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    public async Task<JsonElement?> GetEmployeeAsync(int id)
+    public async Task<JsonElement?> GetWeatherLocationsAsync()
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/employees/{Id}", id);
+        _logger.LogInformation("Calling Demo API: GET /api/demo/weather/locations");
         
-        var response = await client.GetAsync($"/api/employees/{id}");
-        response.EnsureSuccessStatusCode();
-        
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
-    }
-
-    public async Task<JsonElement?> SearchEmployeesAsync(string? name = null, string? department = null)
-    {
-        var client = CreateClient();
-        
-        var queryParams = new List<string>();
-        if (!string.IsNullOrEmpty(name))
-            queryParams.Add($"name={Uri.EscapeDataString(name)}");
-        if (!string.IsNullOrEmpty(department))
-            queryParams.Add($"department={Uri.EscapeDataString(department)}");
-
-        var url = "/api/employees/search";
-        if (queryParams.Any())
-            url += "?" + string.Join("&", queryParams);
-
-        _logger.LogInformation("Calling SampleRestApi: GET {Url}", url);
-        
-        var response = await client.GetAsync(url);
+        var response = await client.GetAsync("/api/demo/weather/locations");
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // PRODUCT ENDPOINTS - SampleRestApi paths
+    // PRODUCT ENDPOINTS - /api/demo/products
     // ???????????????????????????????????????????????????????????????????????????
 
     public async Task<JsonElement?> GetProductsAsync(string? category = null, decimal? minPrice = null, decimal? maxPrice = null)
     {
         var client = CreateClient();
         
-        // SampleRestApi uses /api/products for all products
-        // and /api/products/category/{category} for filtered
-        string url;
+        var queryParams = new List<string>();
         if (!string.IsNullOrEmpty(category))
-        {
-            url = $"/api/products/category/{Uri.EscapeDataString(category)}";
-        }
-        else
-        {
-            url = "/api/products";
-        }
+            queryParams.Add($"category={Uri.EscapeDataString(category)}");
+        if (minPrice.HasValue)
+            queryParams.Add($"minPrice={minPrice.Value}");
+        if (maxPrice.HasValue)
+            queryParams.Add($"maxPrice={maxPrice.Value}");
 
-        _logger.LogInformation("Calling SampleRestApi: GET {Url}", url);
+        var url = "/api/demo/products";
+        if (queryParams.Any())
+            url += "?" + string.Join("&", queryParams);
+
+        _logger.LogInformation("Calling Demo API: GET {Url}", url);
         
         var response = await client.GetAsync(url);
         response.EnsureSuccessStatusCode();
@@ -112,54 +93,49 @@ public class DemoApiClient
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/products/{Id}", id);
+        _logger.LogInformation("Calling Demo API: GET /api/demo/products/{Id}", id);
         
-        var response = await client.GetAsync($"/api/products/{id}");
+        var response = await client.GetAsync($"/api/demo/products/{id}");
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // ORDER ENDPOINTS - SampleRestApi paths
+    // ORDER ENDPOINTS - /api/demo/orders
     // ???????????????????????????????????????????????????????????????????????????
 
     public async Task<JsonElement?> GetOrdersAsync()
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/orders");
+        _logger.LogInformation("Calling Demo API: GET /api/demo/orders (not available - returning empty)");
         
-        var response = await client.GetAsync("/api/orders");
-        response.EnsureSuccessStatusCode();
-        
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        // Note: DemoController doesn't have a "get all orders" endpoint
+        // Return a simulated response
+        return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = "Orders list not available via Demo API. Use get_order or get_customer_orders instead.",
+            data = new object[] { }
+        }));
     }
 
     public async Task<JsonElement?> CreateOrderAsync(string customerId, int productId, int quantity, string? notes = null)
     {
         var client = CreateClient();
         
-        // SampleRestApi expects customerId as int and productIds as array
-        int customerIdInt = 0;
-        if (customerId.StartsWith("CUST", StringComparison.OrdinalIgnoreCase))
-        {
-            int.TryParse(customerId.Replace("CUST", "").Trim('0'), out customerIdInt);
-        }
-        else
-        {
-            int.TryParse(customerId, out customerIdInt);
-        }
-
         var orderRequest = new
         {
-            customerId = customerIdInt,
-            productIds = new List<int> { productId }
+            customerId,
+            productId,
+            quantity,
+            notes
         };
 
-        _logger.LogInformation("Calling SampleRestApi: POST /api/orders with {Request}", JsonSerializer.Serialize(orderRequest));
+        _logger.LogInformation("Calling Demo API: POST /api/demo/orders with {Request}", JsonSerializer.Serialize(orderRequest));
         
-        var response = await client.PostAsJsonAsync("/api/orders", orderRequest);
+        var response = await client.PostAsJsonAsync("/api/demo/orders", orderRequest);
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -169,9 +145,15 @@ public class DemoApiClient
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/orders/{Id}", id);
+        // DemoController uses int for order ID
+        if (!int.TryParse(id.Replace("ORD-", "").Split('-').LastOrDefault() ?? id, out var orderId))
+        {
+            int.TryParse(id, out orderId);
+        }
         
-        var response = await client.GetAsync($"/api/orders/{Uri.EscapeDataString(id)}");
+        _logger.LogInformation("Calling Demo API: GET /api/demo/orders/{Id}", orderId);
+        
+        var response = await client.GetAsync($"/api/demo/orders/{orderId}");
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -181,44 +163,137 @@ public class DemoApiClient
     {
         var client = CreateClient();
         
-        // SampleRestApi doesn't have customer-specific orders endpoint
-        // Get all orders (in real app, you'd filter or add the endpoint)
-        _logger.LogInformation("Calling SampleRestApi: GET /api/orders (filtering for customer {CustomerId})", customerId);
+        _logger.LogInformation("Calling Demo API: GET /api/demo/orders/customer/{CustomerId}", customerId);
         
-        var response = await client.GetAsync("/api/orders");
+        var response = await client.GetAsync($"/api/demo/orders/customer/{Uri.EscapeDataString(customerId)}");
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // INVENTORY ENDPOINTS - SampleRestApi paths
+    // EMPLOYEE ENDPOINTS - Not available in DemoController
+    // These return simulated data since DemoController doesn't have employee endpoints
+    // ???????????????????????????????????????????????????????????????????????????
+
+    public Task<JsonElement?> GetEmployeesAsync()
+    {
+        _logger.LogInformation("GetEmployees called - DemoController doesn't have employee endpoints, returning simulated data");
+        
+        var result = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = "Employee data simulated (not available in Demo API)",
+            employees = new[]
+            {
+                new { id = 1, name = "Alice Johnson", email = "alice@demo.com", department = "Engineering", title = "Senior Developer" },
+                new { id = 2, name = "Bob Smith", email = "bob@demo.com", department = "Engineering", title = "Tech Lead" },
+                new { id = 3, name = "Carol Williams", email = "carol@demo.com", department = "Marketing", title = "Marketing Manager" }
+            },
+            total = 3
+        }));
+        
+        return Task.FromResult<JsonElement?>(result);
+    }
+
+    public Task<JsonElement?> GetEmployeeAsync(int id)
+    {
+        _logger.LogInformation("GetEmployee called for id {Id} - DemoController doesn't have employee endpoints, returning simulated data", id);
+        
+        var employees = new Dictionary<int, object>
+        {
+            [1] = new { id = 1, name = "Alice Johnson", email = "alice@demo.com", department = "Engineering", title = "Senior Developer" },
+            [2] = new { id = 2, name = "Bob Smith", email = "bob@demo.com", department = "Engineering", title = "Tech Lead" },
+            [3] = new { id = 3, name = "Carol Williams", email = "carol@demo.com", department = "Marketing", title = "Marketing Manager" }
+        };
+
+        if (employees.TryGetValue(id, out var employee))
+        {
+            var result = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+            {
+                success = true,
+                data = employee
+            }));
+            return Task.FromResult<JsonElement?>(result);
+        }
+
+        var notFound = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+        {
+            success = false,
+            error = $"Employee with ID {id} not found"
+        }));
+        return Task.FromResult<JsonElement?>(notFound);
+    }
+
+    public Task<JsonElement?> SearchEmployeesAsync(string? name = null, string? department = null)
+    {
+        _logger.LogInformation("SearchEmployees called - DemoController doesn't have employee endpoints, returning simulated data");
+        
+        var result = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+        {
+            success = true,
+            message = $"Employee search simulated (name={name}, department={department})",
+            employees = new[]
+            {
+                new { id = 1, name = "Alice Johnson", email = "alice@demo.com", department = "Engineering", title = "Senior Developer" }
+            },
+            total = 1
+        }));
+        
+        return Task.FromResult<JsonElement?>(result);
+    }
+
+    // ???????????????????????????????????????????????????????????????????????????
+    // INVENTORY ENDPOINTS - Not available in DemoController
+    // Use product stock data instead
     // ???????????????????????????????????????????????????????????????????????????
 
     public async Task<JsonElement?> GetInventoryAsync()
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/inventory");
+        _logger.LogInformation("GetInventory called - using product stock data from /api/demo/products");
         
-        var response = await client.GetAsync("/api/inventory");
+        // Get products and extract inventory info
+        var response = await client.GetAsync("/api/demo/products");
         response.EnsureSuccessStatusCode();
         
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        var products = await response.Content.ReadFromJsonAsync<JsonElement>();
+        
+        // Transform products to inventory format
+        if (products.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+        {
+            var inventory = data.EnumerateArray().Select(p => new
+            {
+                id = p.GetProperty("id").GetInt32(),
+                name = p.GetProperty("name").GetString(),
+                stock = p.GetProperty("stock").GetInt32(),
+                status = p.GetProperty("stock").GetInt32() > 10 ? "In Stock" : 
+                         p.GetProperty("stock").GetInt32() > 0 ? "Low Stock" : "Out of Stock"
+            }).ToArray();
+
+            return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+            {
+                success = true,
+                inventory,
+                total = inventory.Length
+            }));
+        }
+        
+        return products;
     }
 
-    public async Task<JsonElement?> UpdateStockAsync(int productId, int newStock)
+    public Task<JsonElement?> UpdateStockAsync(int productId, int newStock)
     {
-        var client = CreateClient();
+        _logger.LogInformation("UpdateStock called - DemoController doesn't have stock update endpoint");
         
-        var request = new { newStock };
+        var result = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+        {
+            success = false,
+            error = "Stock update not available in Demo API. The stock is managed automatically when orders are created."
+        }));
         
-        _logger.LogInformation("Calling SampleRestApi: PUT /api/inventory/{ProductId}/stock", productId);
-        
-        var response = await client.PutAsJsonAsync($"/api/inventory/{productId}/stock", request);
-        response.EnsureSuccessStatusCode();
-        
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+        return Task.FromResult<JsonElement?>(result);
     }
 
     // ???????????????????????????????????????????????????????????????????????????
@@ -229,9 +304,9 @@ public class DemoApiClient
     {
         var client = CreateClient();
         
-        _logger.LogInformation("Calling SampleRestApi: GET /api/health");
+        _logger.LogInformation("Calling Demo API: GET /api/demo/health");
         
-        var response = await client.GetAsync("/api/health");
+        var response = await client.GetAsync("/api/demo/health");
         response.EnsureSuccessStatusCode();
         
         return await response.Content.ReadFromJsonAsync<JsonElement>();

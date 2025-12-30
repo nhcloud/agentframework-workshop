@@ -5,8 +5,13 @@ using System.Text.Json;
 namespace DotNetAgentFramework.McpServer.Tools;
 
 /// <summary>
-/// MCP Tools that expose SampleRestApi endpoints.
-/// These tools can be called by MCP clients (like AI agents) to interact with the SampleRestApi.
+/// MCP Tools that expose Demo API endpoints from DemoController (port 8000).
+/// These tools can be called by MCP clients (like AI agents) to interact with the Demo API.
+/// 
+/// Available endpoints:
+/// - Weather: /api/demo/weather
+/// - Products: /api/demo/products
+/// - Orders: /api/demo/orders
 /// </summary>
 [McpServerToolType]
 public class DemoApiTools
@@ -19,11 +24,46 @@ public class DemoApiTools
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // EMPLOYEE TOOLS
+    // WEATHER TOOLS - /api/demo/weather
+    // ???????????????????????????????????????????????????????????????????????????
+
+    [McpServerTool(Name = "get_weather")]
+    [Description("Get current weather information for a specific location. Available locations include: Seattle, New York, London, Tokyo, Paris, Sydney, Berlin, Mumbai, San Francisco, Singapore.")]
+    public async Task<string> GetWeather(
+        [Description("The location to get weather for (e.g., Seattle, Tokyo, London)")] string location)
+    {
+        try
+        {
+            var result = await _apiClient.GetWeatherAsync(location);
+            return FormatResponse(result);
+        }
+        catch (Exception ex)
+        {
+            return FormatError("get_weather", ex);
+        }
+    }
+
+    [McpServerTool(Name = "get_weather_locations")]
+    [Description("Get a list of all locations that have weather data available.")]
+    public async Task<string> GetWeatherLocations()
+    {
+        try
+        {
+            var result = await _apiClient.GetWeatherLocationsAsync();
+            return FormatResponse(result);
+        }
+        catch (Exception ex)
+        {
+            return FormatError("get_weather_locations", ex);
+        }
+    }
+
+    // ???????????????????????????????????????????????????????????????????????????
+    // EMPLOYEE TOOLS (Simulated - Demo API doesn't have employee endpoints)
     // ???????????????????????????????????????????????????????????????????????????
 
     [McpServerTool(Name = "get_all_employees")]
-    [Description("Get a list of all employees in the company.")]
+    [Description("Get a list of all employees in the company. Note: Returns simulated data as Demo API focuses on products and orders.")]
     public async Task<string> GetAllEmployees()
     {
         try
@@ -38,7 +78,7 @@ public class DemoApiTools
     }
 
     [McpServerTool(Name = "get_employee")]
-    [Description("Get detailed information about a specific employee by their ID.")]
+    [Description("Get detailed information about a specific employee by their ID. Note: Returns simulated data.")]
     public async Task<string> GetEmployee(
         [Description("The employee ID (e.g., 1, 2, 3)")] int employee_id)
     {
@@ -54,7 +94,7 @@ public class DemoApiTools
     }
 
     [McpServerTool(Name = "search_employees")]
-    [Description("Search for employees by name and/or department.")]
+    [Description("Search for employees by name and/or department. Note: Returns simulated data.")]
     public async Task<string> SearchEmployees(
         [Description("Part of the employee name to search for (optional)")] string? name = null,
         [Description("Department to filter by (e.g., Engineering, Marketing, Sales, HR)")] string? department = null)
@@ -71,11 +111,11 @@ public class DemoApiTools
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // PRODUCT TOOLS
+    // PRODUCT TOOLS - /api/demo/products
     // ???????????????????????????????????????????????????????????????????????????
 
     [McpServerTool(Name = "get_all_products")]
-    [Description("Get a list of all products in the catalog.")]
+    [Description("Get a list of all products in the catalog. Products include electronics and furniture items.")]
     public async Task<string> GetAllProducts()
     {
         try
@@ -92,7 +132,7 @@ public class DemoApiTools
     [McpServerTool(Name = "get_product")]
     [Description("Get detailed information about a specific product by its ID.")]
     public async Task<string> GetProduct(
-        [Description("The product ID (e.g., 1, 2, 3)")] int product_id)
+        [Description("The product ID (e.g., 1, 2, 3, 4, 5)")] int product_id)
     {
         try
         {
@@ -106,7 +146,7 @@ public class DemoApiTools
     }
 
     [McpServerTool(Name = "get_products_by_category")]
-    [Description("Get all products in a specific category.")]
+    [Description("Get all products in a specific category. Available categories: Electronics, Furniture.")]
     public async Task<string> GetProductsByCategory(
         [Description("Product category (e.g., Electronics, Furniture)")] string category)
     {
@@ -122,11 +162,11 @@ public class DemoApiTools
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // ORDER TOOLS
+    // ORDER TOOLS - /api/demo/orders
     // ???????????????????????????????????????????????????????????????????????????
 
     [McpServerTool(Name = "get_all_orders")]
-    [Description("Get a list of all orders.")]
+    [Description("Get information about orders. Note: Use get_order or get_customer_orders for specific queries.")]
     public async Task<string> GetAllOrders()
     {
         try
@@ -143,7 +183,7 @@ public class DemoApiTools
     [McpServerTool(Name = "get_order")]
     [Description("Get detailed information about a specific order by its ID.")]
     public async Task<string> GetOrder(
-        [Description("The order ID (e.g., ORD-20240101-0001)")] string order_id)
+        [Description("The order ID (e.g., 1, 2, 3)")] string order_id)
     {
         try
         {
@@ -157,10 +197,10 @@ public class DemoApiTools
     }
 
     [McpServerTool(Name = "create_order")]
-    [Description("Create a new order for a customer.")]
+    [Description("Create a new order for a customer. Requires authorization. Stock will be automatically reduced.")]
     public async Task<string> CreateOrder(
-        [Description("Customer ID placing the order (e.g., 1, 2, 3)")] string customer_id,
-        [Description("Product ID to order")] int product_id,
+        [Description("Customer ID placing the order (e.g., CUST001, CUST002)")] string customer_id,
+        [Description("Product ID to order (1-5)")] int product_id,
         [Description("Quantity to order (default: 1)")] int quantity = 1,
         [Description("Optional notes for the order")] string? notes = null)
     {
@@ -178,7 +218,7 @@ public class DemoApiTools
     [McpServerTool(Name = "get_customer_orders")]
     [Description("Get all orders for a specific customer.")]
     public async Task<string> GetCustomerOrders(
-        [Description("Customer ID to get orders for")] string customer_id)
+        [Description("Customer ID to get orders for (e.g., CUST001)")] string customer_id)
     {
         try
         {
@@ -192,11 +232,11 @@ public class DemoApiTools
     }
 
     // ???????????????????????????????????????????????????????????????????????????
-    // INVENTORY TOOLS
+    // INVENTORY TOOLS (Uses product stock data)
     // ???????????????????????????????????????????????????????????????????????????
 
     [McpServerTool(Name = "get_inventory")]
-    [Description("Get current inventory status for all products.")]
+    [Description("Get current inventory status for all products, including stock levels.")]
     public async Task<string> GetInventory()
     {
         try
@@ -211,7 +251,7 @@ public class DemoApiTools
     }
 
     [McpServerTool(Name = "update_stock")]
-    [Description("Update the stock quantity for a product.")]
+    [Description("Update the stock quantity for a product. Note: Stock is managed automatically via orders in Demo API.")]
     public async Task<string> UpdateStock(
         [Description("The product ID to update")] int product_id,
         [Description("The new stock quantity")] int new_stock)
@@ -232,7 +272,7 @@ public class DemoApiTools
     // ???????????????????????????????????????????????????????????????????????????
 
     [McpServerTool(Name = "health_check")]
-    [Description("Check the health and status of the SampleRestApi service.")]
+    [Description("Check the health and status of the Demo API service. Returns available endpoints.")]
     public async Task<string> HealthCheck()
     {
         try
