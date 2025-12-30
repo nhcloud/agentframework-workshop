@@ -2,8 +2,8 @@
 agent-framework --pre
 
 # Web framework
-fastapi[all]
-uvicorn[standard]
+fastapi
+uvicorn
 
 # Configuration and environment
 python-dotenv
@@ -69,15 +69,15 @@ httpx>=0.25.0
 sse-starlette>=1.6.0
 
 # JSON-RPC support for MCP protocol
-jsonrpcserver>=5.0.0
-jsonrpcclient>=4.0.0
+# jsonrpcserver>=5.0.0  # Not available for Python 3.14
+# jsonrpcclient>=4.0.0  # Not available for Python 3.14
 
 # Async utilities
 anyio>=4.0.0
-asyncio-sse-client>=0.0.2
+httpx-sse
 
 # Dataclasses extensions (for Python 3.9 compatibility)
-dataclasses-json>=0.6.0
+dataclasses-json
 
 # Type hints support
-typing-extensions>=4.8.0
+typing-extensions
