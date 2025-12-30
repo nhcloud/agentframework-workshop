@@ -27,6 +27,35 @@ public class ChatRequest
     
     [JsonPropertyName("stream")]
     public bool Stream { get; set; } = true; // Default to streaming
+
+    /// <summary>
+    /// Selected tools to make available to the agent
+    /// Can include local tools (e.g., "WeatherTool.GetWeather") and 
+    /// MCP tools (e.g., "serverName.toolName")
+    /// </summary>
+    [JsonPropertyName("selected_tools")]
+    public List<SelectedToolInfo>? SelectedTools { get; set; }
+}
+
+/// <summary>
+/// Information about a selected tool from the UI
+/// </summary>
+public class SelectedToolInfo
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("fullName")]
+    public string? FullName { get; set; }
+
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "local"; // "local" or "mcp"
+
+    [JsonPropertyName("serverName")]
+    public string? ServerName { get; set; }
+
+    [JsonPropertyName("transport")]
+    public string? Transport { get; set; } // "native", "stdio", "sse"
 }
 
 public class ChatResponse
@@ -114,6 +143,12 @@ public class GroupChatRequest
 
     [JsonPropertyName("format")]
     public string? Format { get; set; } = "user_friendly"; // "user_friendly" (default) or "detailed"
+
+    /// <summary>
+    /// Selected tools to make available to agents in the group chat
+    /// </summary>
+    [JsonPropertyName("selected_tools")]
+    public List<SelectedToolInfo>? SelectedTools { get; set; }
 }
 
 public class GroupChatResponse

@@ -1,7 +1,7 @@
 """
-Routers module exports.
+Routers package for Agent Framework API.
 """
 
-from . import chat, agents
+from . import chat, agents, safety, mcp, demo
 
-__all__ = ["chat", "agents"]
+__all__ = ["chat", "agents", "safety", "mcp", "demo"]

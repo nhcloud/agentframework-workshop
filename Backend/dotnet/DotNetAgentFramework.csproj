@@ -9,6 +9,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Exclude the MCP Server and Examples from this build -->
+    <Compile Remove="McpServer\**" />
+    <Content Remove="McpServer\**" />
+    <EmbeddedResource Remove="McpServer\**" />
+    <None Remove="McpServer\**" />
+    
+    <Compile Remove="Examples\**" />
+    <Content Remove="Examples\**" />
+    <EmbeddedResource Remove="Examples\**" />
+    <None Remove="Examples\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- ASP.NET Core Web API packages -->
     <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" Version="4.0.4.10" />
     <PackageReference Include="Azure.AI.Agents.Persistent" Version="1.2.0-beta.7" />
@@ -38,12 +51,11 @@
     <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.0.1" />
     
-    <!-- Semantic Kernel packages -->
+    <!-- MCP (Model Context Protocol) packages -->
+    <PackageReference Include="ModelContextProtocol" Version="0.2.0-preview.2" />
     
     <!-- Azure AI Projects SDK for Azure AI Foundry -->
     <PackageReference Include="Azure.Identity" Version="1.18.0-beta.2" />
-
-    <!-- Azure AI Search SDK -->
 
     <!-- Cosmos DB and JSON serialization packages -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />

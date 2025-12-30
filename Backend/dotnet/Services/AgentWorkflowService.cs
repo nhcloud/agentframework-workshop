@@ -1,4 +1,6 @@
 using DotNetAgentFramework.Configuration;
+using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace DotNetAgentFramework.Services;
 
@@ -18,11 +20,13 @@ internal enum OrchestrationMode
 public class AgentWorkflowService(
     IAgentService agentService,
     ISessionManager sessionManager,
+    IMcpToolFunctionFactory mcpToolFunctionFactory,
     ILogger<AgentWorkflowService> logger,
     IOptions<AzureAIConfig> azureConfig) : IAgentWorkflowService
 {
     private readonly IAgentService _agentService = agentService;
     private readonly ISessionManager _sessionManager = sessionManager;
+    private readonly IMcpToolFunctionFactory _mcpToolFunctionFactory = mcpToolFunctionFactory;
     private readonly ILogger<AgentWorkflowService> _logger = logger;
     private readonly AzureAIConfig _azureConfig = azureConfig.Value;
 
@@ -55,22 +59,33 @@ public class AgentWorkflowService(
             agentNames = ["azure_openai_agent"]; // fallback
         }
 
+        // Create AIFunction wrappers for selected MCP tools
+        // These will be passed to the agent for LLM-driven function calling
+        IList<AIFunction>? mcpToolFunctions = null;
+        if (request.SelectedTools?.Any(t => t.Source == "mcp") == true)
+        {
+            var mcpToolCount = request.SelectedTools.Count(t => t.Source == "mcp");
+            _logger.LogInformation("Creating AIFunction wrappers for {Count} MCP tools", mcpToolCount);
+            mcpToolFunctions = await _mcpToolFunctionFactory.CreateFunctionsAsync(request.SelectedTools, ct);
+            _logger.LogInformation("Created {Count} AIFunction wrappers for MCP tools", mcpToolFunctions.Count);
+        }
+
         var mode = SelectMode(request.Message, agentNames);
         _logger.LogInformation("Selected orchestration mode: {Mode}", mode);
 
         switch (mode)
         {
             case OrchestrationMode.Single:
-                await RunSingleAsync(request, sessionId, messages, ct);
+                await RunSingleAsync(request, sessionId, messages, mcpToolFunctions, ct);
                 break;
             case OrchestrationMode.Parallel:
-                await RunParallelAsync(request, sessionId, messages, agentNames, ct);
+                await RunParallelAsync(request, sessionId, messages, agentNames, mcpToolFunctions, ct);
                 break;
             case OrchestrationMode.Sequential:
-                await RunSequentialAsync(request, sessionId, messages, PlanSequentialOrder(agentNames, request.Message), ct);
+                await RunSequentialAsync(request, sessionId, messages, PlanSequentialOrder(agentNames, request.Message), mcpToolFunctions, ct);
                 break;
             case OrchestrationMode.Hybrid:
-                await RunHybridAsync(request, sessionId, messages, agentNames, ct);
+                await RunHybridAsync(request, sessionId, messages, agentNames, mcpToolFunctions, ct);
                 break;
         }
 
@@ -144,7 +159,7 @@ public class AgentWorkflowService(
         return order;
     }
 
-    private async Task RunSingleAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, CancellationToken ct)
+    private async Task RunSingleAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, IList<AIFunction>? mcpTools, CancellationToken ct)
     {
         var agentName = request.Agents?.FirstOrDefault() ?? "azure_openai_agent";
         var agent = await _agentService.GetAgentAsync(agentName);
@@ -153,15 +168,28 @@ public class AgentWorkflowService(
             _logger.LogWarning("Agent {Agent} not found", agentName);
             return;
         }
-        var content = await agent.RespondAsync(request.Message, request.Context);
+
+        // Use RespondWithToolsAsync to let the LLM decide when to call MCP tools
+        string content;
+        if (mcpTools?.Count > 0)
+        {
+            _logger.LogInformation("Calling agent with {ToolCount} MCP tools for LLM-driven function calling", mcpTools.Count);
+            content = await agent.RespondWithToolsAsync(request.Message, mcpTools, null, request.Context);
+        }
+        else
+        {
+            content = await agent.RespondAsync(request.Message, request.Context);
+        }
+        
         var msg = MakeAgentMessage(agentName, content, 1);
         messages.Add(msg);
         await _sessionManager.AddMessageToSessionAsync(sessionId, msg);
     }
 
-    private async Task RunParallelAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, List<string> agents, CancellationToken ct)
+    private async Task RunParallelAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, List<string> agents, IList<AIFunction>? mcpTools, CancellationToken ct)
     {
         var turn = 1;
+        
         var tasks = agents.Select(async name =>
         {
             try
@@ -169,11 +197,22 @@ public class AgentWorkflowService(
                 ct.ThrowIfCancellationRequested();
                 var agent = await _agentService.GetAgentAsync(name);
                 if (agent == null) return (name, (string?)null);
-                var content = await agent.RespondAsync(request.Message, request.Context);
+                
+                // Use RespondWithToolsAsync if MCP tools are available
+                string content;
+                if (mcpTools?.Count > 0)
+                {
+                    content = await agent.RespondWithToolsAsync(request.Message, mcpTools, null, request.Context);
+                }
+                else
+                {
+                    content = await agent.RespondAsync(request.Message, request.Context);
+                }
                 return (name, content);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error in parallel agent {Agent}", name);
                 return (name, (string?)null);
             }
         }).ToList();
@@ -187,33 +226,42 @@ public class AgentWorkflowService(
         }
     }
 
-    private async Task RunSequentialAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, List<string> order, CancellationToken ct)
+    private async Task RunSequentialAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, List<string> order, IList<AIFunction>? mcpTools, CancellationToken ct)
     {
         string? context = request.Context;
         var turn = 1;
+        
         foreach (var name in order)
         {
             ct.ThrowIfCancellationRequested();
             var agent = await _agentService.GetAgentAsync(name);
             if (agent == null) continue;
 
-            var content = await agent.RespondAsync(request.Message, context);
+            // Use RespondWithToolsAsync if MCP tools are available
+            string content;
+            if (mcpTools?.Count > 0)
+            {
+                content = await agent.RespondWithToolsAsync(request.Message, mcpTools, null, context);
+            }
+            else
+            {
+                content = await agent.RespondAsync(request.Message, context);
+            }
+            
             var msg = MakeAgentMessage(name, content, turn++);
             messages.Add(msg);
             await _sessionManager.AddMessageToSessionAsync(sessionId, msg);
 
-            // Handoff: pass along latest content as context to next agent
             context = content;
 
-            // Early-exit if agent indicates termination
             if (IsTerminated(content)) break;
         }
     }
 
-    private async Task RunHybridAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, List<string> agents, CancellationToken ct)
+    private async Task RunHybridAsync(GroupChatRequest request, string sessionId, List<GroupChatMessage> messages, List<string> agents, IList<AIFunction>? mcpTools, CancellationToken ct)
     {
         // Parallel first round
-        await RunParallelAsync(request, sessionId, messages, agents, ct);
+        await RunParallelAsync(request, sessionId, messages, agents, mcpTools, ct);
 
         // Pick best response (simple heuristic: longest non-terminated)
         var agentResponses = messages.Where(m => m.Agent != "user").ToList();
@@ -260,7 +308,6 @@ public class AgentWorkflowService(
             if (agentMsgs.Count == 0) return "No agent responses.";
 
             var participants = string.Join(", ", agentMsgs.Select(m => m.Agent).Distinct());
-            var last = agentMsgs.Last().Content;
             return await Task.FromResult($"Workflow summary with {agentMsgs.Count} responses from {participants}. Finalized by {agentMsgs.Last().Agent}.");
         }
         catch

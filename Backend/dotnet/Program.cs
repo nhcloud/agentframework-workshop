@@ -95,6 +95,9 @@ builder.Services.AddHttpClient("AzureOpenAI", client =>
     client.Timeout = TimeSpan.FromMinutes(5); // 5 minutes for AI operations
 });
 
+// Add HttpClient factory for MCP and other services
+builder.Services.AddHttpClient();
+
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -230,6 +233,77 @@ builder.Services.Configure<AzureAIConfig>(options =>
     }
 });
 
+// Add MCP (Model Context Protocol) configuration
+builder.Services.Configure<McpConfig>(options =>
+{
+    // Try to load from environment variables first
+    var mcpServersJson = Environment.GetEnvironmentVariable("MCP_SERVERS");
+    
+    if (!string.IsNullOrEmpty(mcpServersJson))
+    {
+        try
+        {
+            var servers = System.Text.Json.JsonSerializer.Deserialize<List<McpServerConfig>>(mcpServersJson);
+            if (servers != null)
+            {
+                options.Servers = servers;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"??  Failed to parse MCP_SERVERS environment variable: {ex.Message}");
+        }
+    }
+    
+    // Also load from configuration section if present
+    var mcpSection = builder.Configuration.GetSection("Mcp");
+    if (mcpSection.Exists())
+    {
+        mcpSection.Bind(options);
+    }
+    
+    // Add default MCP server configurations if none configured
+    // This demonstrates both STDIO and SSE transports
+    if (!options.Servers.Any())
+    {
+        // 1. LOCAL MCP Server (STDIO) - spawned as subprocess
+        options.Servers.Add(new McpServerConfig
+        {
+            Name = "local-mcp-server",
+            Description = "Local MCP Server (STDIO) - Bridges to SampleRestApi",
+            Transport = "stdio",
+            Command = "dotnet",
+            Arguments = new List<string> { "run", "--project", "McpServer/DotNetAgentFramework.McpServer.csproj" },
+            Enabled = true,
+            EnvironmentVariables = new Dictionary<string, string>
+            {
+                // Point to SampleRestApi on port 5001, NOT DemoController on 8000
+                ["DEMO_API_BASE_URL"] = "http://localhost:5001",
+                ["DEMO_API_AUTH_TOKEN"] = "Bearer demo-token-12345"
+            }
+        });
+        
+        // 2. REMOTE MCP Server (SSE) - connects to SampleMcpBridge via HTTP/SSE
+        // SampleMcpBridge also calls SampleRestApi on port 5001
+        options.Servers.Add(new McpServerConfig
+        {
+            Name = "remote-mcp-bridge",
+            Description = "Remote MCP Bridge (SSE) - Bridges to SampleRestApi via HTTP/SSE",
+            Transport = "sse",
+            Endpoint = "http://localhost:5050/sse",
+            Enabled = true,
+            TimeoutSeconds = 30
+        });
+        
+        Console.WriteLine("?? Added default MCP server configurations:");
+        Console.WriteLine("   ?? local-mcp-server (STDIO) - bridges to SampleRestApi:5001");
+        Console.WriteLine("   ?? remote-mcp-bridge (SSE)  - http://localhost:5050/sse -> SampleRestApi:5001");
+    }
+    
+    options.Enabled = bool.TryParse(Environment.GetEnvironmentVariable("MCP_ENABLED"), out var mcpEnabled) ? mcpEnabled : true;
+    options.DefaultTimeoutSeconds = int.TryParse(Environment.GetEnvironmentVariable("MCP_TIMEOUT_SECONDS"), out var timeout) ? timeout : 30;
+});
+
 // Add agent configuration from YAML
 builder.Services.Configure<AppConfig>(builder.Configuration);
 
@@ -241,6 +315,12 @@ builder.Services.AddSingleton<IContentSafetyService, ContentSafetyService>();
 
 // Register Workflow service
 builder.Services.AddScoped<IAgentWorkflowService, AgentWorkflowService>();
+
+// Register MCP Client service
+builder.Services.AddSingleton<IMcpClientService, McpClientService>();
+
+// Register MCP Tool Function Factory for enterprise-style function calling
+builder.Services.AddSingleton<IMcpToolFunctionFactory, McpToolFunctionFactory>();
 
 // Add Agent Framework services - simplified for the new Agent Framework pattern
 builder.Services.AddScoped<IAgentService, AgentService>();
@@ -301,6 +381,8 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
 Console.WriteLine("?? Starting .NET Agent Framework API...");
 Console.WriteLine("?? Swagger UI available at: http://localhost:8000");
 Console.WriteLine("??  Health endpoint: http://localhost:8000/health");
+Console.WriteLine("?? MCP endpoints available at: http://localhost:8000/api/mcp");
+Console.WriteLine("?? Demo endpoints available at: http://localhost:8000/api/demo");
 
 app.Run();
 

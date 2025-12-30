@@ -63,7 +63,7 @@ class ChatService {
   /**
    * Send message to single agent or multiple agents
    */
-  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null, enableMemory = null, stream = true) {
+  async sendMessage(message, sessionId = null, agents = null, maxTurns = null, format = null, enableMemory = null, stream = true, selectedTools = null) {
     // Handle single agent (backward compatibility)
     if (typeof agents === 'string') {
       agents = [agents];
@@ -89,6 +89,11 @@ class ChatService {
     // Add enable_memory if provided
     if (enableMemory !== null && enableMemory !== undefined) {
       payload.enable_memory = enableMemory;
+    }
+
+    // Add selected tools if provided
+    if (selectedTools !== null && selectedTools !== undefined && selectedTools.length > 0) {
+      payload.selected_tools = selectedTools;
     }
 
     // If streaming is disabled, use regular axios request
@@ -407,6 +412,161 @@ class ChatService {
       return response.data;
     } catch (error) {
       return { status: 'error', message: error.message };
+    }
+  }
+
+  // ???????????????????????????????????????????????????????????????????????????
+  // TOOLS API - Local and MCP tools
+  // ???????????????????????????????????????????????????????????????????????????
+
+  /**
+   * Get all available tools (local + MCP)
+   * Returns tools grouped by category with metadata
+   */
+  async getAllTools() {
+    try {
+      const response = await this.api.get('/api/tools');
+      return {
+        success: response.data.success,
+        tools: response.data.tools || [],
+        categories: response.data.categories || [],
+        totalCount: response.data.totalCount || 0,
+        localCount: response.data.localCount || 0,
+        mcpCount: response.data.mcpCount || 0,
+        mcpStdioCount: response.data.mcpStdioCount || 0,
+        mcpSseCount: response.data.mcpSseCount || 0,
+        serverStatus: response.data.serverStatus || [],
+        error: response.data.error,
+        timestamp: response.data.timestamp
+      };
+    } catch (error) {
+      console.error('Failed to get tools:', error);
+      return {
+        success: false,
+        tools: [],
+        categories: [],
+        error: error.response?.data?.error || error.message || 'Failed to get tools'
+      };
+    }
+  }
+
+  /**
+   * Get only local coded tools (like WeatherTool)
+   */
+  async getLocalTools() {
+    try {
+      const response = await this.api.get('/api/tools/local');
+      return {
+        success: response.data.success,
+        tools: response.data.tools || [],
+        totalCount: response.data.totalCount || 0,
+        error: response.data.error
+      };
+    } catch (error) {
+      console.error('Failed to get local tools:', error);
+      return {
+        success: false,
+        tools: [],
+        error: error.response?.data?.error || error.message || 'Failed to get local tools'
+      };
+    }
+  }
+
+  /**
+   * Get MCP tools (optionally from a specific server or transport type)
+   * @param {string|null} serverName - Optional server name to filter tools
+   * @param {string|null} transport - Optional transport type to filter ('stdio' or 'sse')
+   */
+  async getMcpTools(serverName = null, transport = null) {
+    try {
+      let url = '/api/tools/mcp';
+      const params = new URLSearchParams();
+      
+      if (serverName) {
+        params.append('serverName', serverName);
+      }
+      if (transport) {
+        params.append('transport', transport);
+      }
+      
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
+      const response = await this.api.get(url);
+      return {
+        success: response.data.success,
+        tools: response.data.tools || [],
+        totalCount: response.data.totalCount || 0,
+        mcpStdioCount: response.data.mcpStdioCount || 0,
+        mcpSseCount: response.data.mcpSseCount || 0,
+        error: response.data.error
+      };
+    } catch (error) {
+      console.error('Failed to get MCP tools:', error);
+      return {
+        success: false,
+        tools: [],
+        error: error.response?.data?.error || error.message || 'Failed to get MCP tools'
+      };
+    }
+  }
+
+  /**
+   * Get MCP server configurations and status
+   */
+  async getMcpServers() {
+    try {
+      const response = await this.api.get('/api/tools/mcp/servers');
+      return {
+        success: response.data.success,
+        servers: response.data.servers || [],
+        totalCount: response.data.totalCount || 0,
+        enabledCount: response.data.enabledCount || 0,
+        stdioCount: response.data.stdioCount || 0,
+        sseCount: response.data.sseCount || 0,
+        error: response.data.error
+      };
+    } catch (error) {
+      console.error('Failed to get MCP servers:', error);
+      return {
+        success: false,
+        servers: [],
+        error: error.response?.data?.error || error.message || 'Failed to get MCP servers'
+      };
+    }
+  }
+
+  /**
+   * Call a specific tool directly
+   * @param {string} toolName - Name of the tool to call
+   * @param {string} source - 'local' or 'mcp'
+   * @param {string|null} serverName - Server name for MCP tools
+   * @param {object|null} args - Arguments to pass to the tool
+   */
+  async callTool(toolName, source = 'local', serverName = null, args = null) {
+    try {
+      const response = await this.api.post('/api/tools/call', {
+        toolName,
+        source,
+        serverName,
+        arguments: args
+      });
+      return {
+        success: response.data.success,
+        result: response.data.result,
+        error: response.data.error,
+        toolName: response.data.toolName,
+        source: response.data.source,
+        serverName: response.data.serverName,
+        durationMs: response.data.durationMs
+      };
+    } catch (error) {
+      console.error('Failed to call tool:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Failed to call tool'
+      };
     }
   }
 
