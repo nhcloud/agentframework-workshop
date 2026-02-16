@@ -48,7 +48,7 @@ public class MicrosoftFoundryPeopleAgent(ILogger logger, AgentInstructionsServic
         {
             _logger.LogError(ex, "Failed to initialize Microsoft Foundry People Agent");
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -119,7 +119,7 @@ public class MicrosoftFoundryPeopleAgent(ILogger logger, AgentInstructionsServic
         {
             _logger.LogError(ex, "Error processing with Microsoft Foundry People Agent");
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             return $"I encountered an error while processing your request: {ex.Message}";
         }
     }
