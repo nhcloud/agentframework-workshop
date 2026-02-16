@@ -59,7 +59,7 @@ public abstract class BaseAgent(ILogger logger, ActivitySource? activitySource =
         {
             _logger.LogError(ex, "Failed to initialize agent {AgentName}", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -153,7 +153,7 @@ public abstract class BaseAgent(ILogger logger, ActivitySource? activitySource =
         {
             _logger.LogError(ex, "Error in {AgentName} responding to message", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             return $"I encountered an error while processing your request: {ex.Message}";
         }
     }
@@ -201,7 +201,7 @@ public abstract class BaseAgent(ILogger logger, ActivitySource? activitySource =
         {
             _logger.LogError(ex, "Error in {AgentName} chat", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -287,7 +287,7 @@ public class AzureOpenAIAgent(
         {
             _logger.LogError(ex, "Failed to initialize Azure OpenAI agent {AgentName}", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -321,7 +321,7 @@ public class AzureOpenAIAgent(
         {
             _logger.LogError(ex, "Error in {AgentName} responding to message", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             return $"I encountered an error while processing your request: {ex.Message}";
         }
     }
@@ -387,7 +387,7 @@ public class AzureOpenAIAgent(
         {
             _logger.LogError(ex, "Error processing message with memory for agent {AgentName}", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -456,7 +456,7 @@ public class AzureAIFoundryAgent(
         {
             _logger.LogError(ex, "Failed to initialize Azure AI Foundry agent {AgentName}", Name);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -513,7 +513,7 @@ public class AzureAIFoundryAgent(
         {
             _logger.LogError(ex, "Error processing with Azure AI Foundry agent {AgentId}", _foundryAgent?.Id);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }

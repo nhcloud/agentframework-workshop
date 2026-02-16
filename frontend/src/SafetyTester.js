@@ -5,11 +5,10 @@ import { Shield, Upload, FileText, AlertCircle, Image as ImageIcon, X } from 'lu
 
 const SafetySection = styled.div`
   padding: 20px;
-  border-bottom: 1px solid ${props => props.theme.colors.borderLight};
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 400px);
-  overflow: hidden;
+  flex: 1;
+  min-height: 0;
 
   h3 {
     font-size: 16px;
@@ -61,9 +60,11 @@ const TabContent = styled(motion.div)`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow-y: auto;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding-right: 4px;
+  padding-bottom: 20px;
 
   &::-webkit-scrollbar {
     width: 6px;

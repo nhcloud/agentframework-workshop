@@ -48,7 +48,7 @@ public class AzureOpenAIGenericAgent(ILogger logger, AgentInstructionsService in
         {
             _logger.LogError(ex, "Failed to initialize Azure OpenAI Generic Agent");
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -181,7 +181,7 @@ public class AzureOpenAIGenericAgent(ILogger logger, AgentInstructionsService in
         {
             _logger.LogError(ex, "Error processing with Azure OpenAI Generic Agent");
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             return $"I encountered an error while processing your request: {ex.Message}";
         }
     }

@@ -5,6 +5,7 @@ import { Wrench, Server, Code, Globe, ChevronDown, ChevronRight, Check, RefreshC
 const ToolsContainer = styled.div`
   padding: 16px;
   border-bottom: 1px solid ${props => props.theme.colors.borderLight};
+  flex-shrink: 0;
 `;
 
 const ToolsHeader = styled.div`
@@ -183,9 +184,23 @@ const TransportBadge = styled.span`
 `;
 
 const ToolsList = styled.div`
-  max-height: ${props => props.expanded ? '300px' : '0'};
+  max-height: ${props => props.expanded ? '500px' : '0'};
   overflow-y: auto;
+  overflow-x: hidden;
   transition: max-height 0.3s ease;
+  
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: ${props => props.theme.colors.border};
+    border-radius: 2px;
+  }
 `;
 
 const ToolItem = styled.div`
