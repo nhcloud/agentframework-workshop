@@ -24,7 +24,8 @@ import {
   X,
   Shield,
   Upload,
-  FileText
+  FileText,
+  MessageSquare
 } from 'lucide-react';
 
 import ChatService from './services/ChatService';
@@ -101,6 +102,7 @@ const AppContainer = styled.div`
 
 const Sidebar = styled(motion.div)`
   width: ${props => props.collapsed ? '0px' : '320px'};
+  height: 100vh;
   background: ${props => props.theme.colors.surface};
   border-right: ${props => props.collapsed ? 'none' : `1px solid ${props.theme.colors.border}`};
   display: flex;
@@ -115,28 +117,12 @@ const SidebarContent = styled.div`
   width: 320px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   opacity: ${props => props.collapsed ? 0 : 1};
   transition: opacity 0.2s ease;
   pointer-events: ${props => props.collapsed ? 'none' : 'auto'};
-  overflow-y: auto;
-  max-height: calc(100vh - 100px);
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: ${props => props.theme.colors.border};
-    border-radius: 3px;
-    
-    &:hover {
-      background: ${props => props.theme.colors.textMuted};
-    }
-  }
+  overflow: hidden;
 `;
 
 const SidebarToggle = styled(motion.button)`
@@ -173,6 +159,7 @@ const SidebarHeader = styled.div`
   border-bottom: 1px solid ${props => props.theme.colors.borderLight};
   background: linear-gradient(135deg, ${props => props.theme.colors.professional} 0%, ${props => props.theme.colors.professionalDark} 100%);
   color: white;
+  flex-shrink: 0;
 
   h1 {
     font-size: 24px;
@@ -183,6 +170,62 @@ const SidebarHeader = styled.div`
   p {
     opacity: 0.9;
     font-size: 14px;
+  }
+`;
+
+const MainTabContainer = styled.div`
+  display: flex;
+  background: ${props => props.theme.colors.backgroundAlt};
+  border-bottom: 1px solid ${props => props.theme.colors.border};
+  flex-shrink: 0;
+`;
+
+const MainTab = styled.button`
+  flex: 1;
+  padding: 14px 16px;
+  border: none;
+  background: ${props => props.active ? props.theme.colors.surface : 'transparent'};
+  color: ${props => props.active ? props.theme.colors.primary : props.theme.colors.textSecondary};
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  border-bottom: 2px solid ${props => props.active ? props.theme.colors.primary : 'transparent'};
+
+  &:hover {
+    background: ${props => props.active ? props.theme.colors.surface : props.theme.colors.surfaceHover};
+    color: ${props => props.theme.colors.primary};
+  }
+
+  svg {
+    flex-shrink: 0;
+  }
+`;
+
+const TabContentWrapper = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: ${props => props.theme.colors.border};
+    border-radius: 3px;
+    
+    &:hover {
+      background: ${props => props.theme.colors.textMuted};
+    }
   }
 `;
 
@@ -935,6 +978,7 @@ function App() {
   
   // UI state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState('chat'); // 'chat' or 'safety'
   
   // Services
   const [chatService] = useState(() => new ChatService());
@@ -1237,6 +1281,26 @@ function App() {
               <p>Enterprise Multi-Agent Platform</p>
             </SidebarHeader>
 
+            <MainTabContainer>
+              <MainTab 
+                active={sidebarTab === 'chat'} 
+                onClick={() => setSidebarTab('chat')}
+              >
+                <MessageSquare size={16} />
+                Chat
+              </MainTab>
+              <MainTab 
+                active={sidebarTab === 'safety'} 
+                onClick={() => setSidebarTab('safety')}
+              >
+                <Shield size={16} />
+                Safety Check
+              </MainTab>
+            </MainTabContainer>
+
+            <TabContentWrapper>
+            {sidebarTab === 'chat' ? (
+              <>
           <AgentSection>
             <h3>
               <Bot size={16} />
@@ -1454,9 +1518,12 @@ function App() {
               )}
             </VoiceControls>
           </VoiceSection>
-
-          {/* Use the SafetyTester component with tabbed interface */}
-          <SafetyTester chatService={chatService} />
+              </>
+            ) : (
+              /* Safety Check Tab Content */
+              <SafetyTester chatService={chatService} />
+            )}
+            </TabContentWrapper>
           </SidebarContent>
         </Sidebar>
 
